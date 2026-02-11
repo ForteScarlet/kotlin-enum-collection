@@ -1,4 +1,3 @@
-import org.jetbrains.dokka.gradle.DokkaTask
 import org.jetbrains.kotlin.gradle.ExperimentalWasmDsl
 
 plugins {
@@ -30,20 +29,27 @@ kotlin {
         binaries.library()
     }
 
+    // https://kotlinlang.org/docs/native-target-support.html
+    // Tier 1
+    macosArm64()
+    iosSimulatorArm64()
+    iosArm64()
+
+    // Tier 2
     linuxX64()
     linuxArm64()
+    watchosSimulatorArm64()
+    watchosArm32()
+    watchosArm64()
+    tvosSimulatorArm64()
+    tvosArm64()
+
+    // Tier 3
     macosX64()
-    macosArm64()
     mingwX64()
     iosX64()
-    iosArm64()
-    iosSimulatorArm64()
     tvosX64()
-    tvosArm64()
-    tvosSimulatorArm64()
     watchosX64()
-    watchosArm64()
-    watchosSimulatorArm64()
 }
 
 tasks.withType<Jar>().configureEach {
@@ -53,10 +59,13 @@ tasks.withType<Jar>().configureEach {
     manifest.attributes["Automatic-Module-Name"] = moduleName
 }
 
-tasks.withType<DokkaTask>().configureEach {
-    failOnWarning.set(true)
-    dokkaSourceSets.configureEach {
-        reportUndocumented.set(true)
-        skipDeprecated.set(false)
+dokka {
+    dokkaPublications.html {
+        suppressInheritedMembers = false
+        suppressObviousFunctions = false
+    }
+
+    pluginsConfiguration.html {
+        footerMessage.set("© 2026 Forte Scarlet. All rights reserved.")
     }
 }

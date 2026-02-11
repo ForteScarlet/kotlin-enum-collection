@@ -12,6 +12,8 @@ kotlin {
         val jvmMain by getting {
             dependencies {
                 implementation(libs.ksp.symbol.processing.api)
+                api(project(":kotlin-enum-collection-annotations"))
+                api(libs.codegentle.ksp)
             }
         }
     }

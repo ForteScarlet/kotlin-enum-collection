@@ -9,5 +9,11 @@ kotlin {
                 api(project(":kotlin-enum-collection-annotations"))
             }
         }
+
+        val commonTest by getting {
+            dependencies {
+                implementation(kotlin("test"))
+            }
+        }
     }
 }

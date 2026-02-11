@@ -21,5 +21,6 @@ include(
     ":kotlin-enum-collection-annotations",
     ":kotlin-enum-collection-ksp",
     ":kotlin-enum-collection-api",
+    ":kotlin-enum-collection-benchmark",
     ":examples",
 )

@@ -4,269 +4,85 @@ import kotlin.enums.EnumEntries
 import kotlin.enums.enumEntries
 
 /**
- * A set specialized for enum elements.
- *
- * Implementations use ordinal-based bit storage to minimize memory footprint and branch cost.
+ * A mutable [EnumSet].
  */
-public interface EnumSet<E : Enum<E>> : Set<E> {
-    /**
-     * Returns `true` when this set contains at least one element from [elements].
-     */
-    public fun containsAny(elements: Collection<E>): Boolean
-
-    /**
-     * Returns a new set containing elements that are in both this set and [other].
-     */
-    public fun intersect(other: Set<E>): Set<E>
-
-    /**
-     * Returns a new set containing elements that are in this set or [other].
-     */
-    public fun union(other: Set<E>): Set<E>
-
-    /**
-     * Returns a new set containing elements in this set but not in [other].
-     */
-    public fun difference(other: Set<E>): Set<E>
-
-    // TODO public fun copy(): EnumSet<E>
+public interface MutableEnumSet<E : Enum<E>> : EnumSet<E>, MutableSet<E> {
+    // TODO override fun copy(): MutableEnumSet<E>
 }
 
 /**
- * Converts this set to an immutable [EnumSet].
+ * Converts this set to a mutable [MutableEnumSet].
  *
- * For internal enum-set implementations, this method uses zero/low-copy fast paths.
+ * Similar to Kotlin's `toMutableSet`, this creates an independent mutable copy.
  */
-public fun <E : Enum<E>> Set<E>.toEnumSet(): EnumSet<E> {
-    if (this is EnumSet<E> && this !is MutableEnumSet<E>) return this
-
+public fun <E : Enum<E>> Set<E>.toMutableEnumSet(): MutableEnumSet<E> {
     @Suppress("UNCHECKED_CAST")
     return when (this) {
         is EnumEntriesBasedI32EnumSet<*> -> {
             val set = this as EnumEntriesBasedI32EnumSet<E>
-            createI32EnumSet(set.bs, set.values)
+            createMutableI32EnumSet(set.bs, set.values)
         }
 
         is EnumEntriesBasedI64EnumSet<*> -> {
             val set = this as EnumEntriesBasedI64EnumSet<E>
-            createI64EnumSet(set.bs, set.values)
+            createMutableI64EnumSet(set.bs, set.values)
         }
 
         is EnumEntriesBasedLargeEnumSet<*> -> {
             val set = this as EnumEntriesBasedLargeEnumSet<E>
-            createLargeEnumSet(set.bs.copyOf(), set.values)
+            createMutableLargeEnumSet(set.bs.copyOf(), set.values)
         }
 
-        else -> {
-            if (isEmpty()) {
-                emptyEnumSetOf()
-            } else {
-                GenericEnumSet(toSet())
-            }
-        }
+        else -> GenericMutableEnumSet(toMutableSet())
     }
 }
 
 /**
- * Creates an [EnumSet] that contains all constants of enum type [E].
+ * Creates a mutable [MutableEnumSet] containing [elements].
  */
-public inline fun <reified E : Enum<E>> fullEnumSetOf(): EnumSet<E> {
+public inline fun <reified E : Enum<E>> mutableEnumSetOf(vararg elements: E): MutableEnumSet<E> {
     val entries = enumEntries<E>()
     val entrySize = entries.size
     return when {
-        entrySize == 0 -> emptyEnumSetOf()
-        entrySize <= Int.SIZE_BITS -> {
-            val bits = if (entrySize == Int.SIZE_BITS) -1 else (1 shl entrySize) - 1
-            createI32EnumSet(bits, entries)
-        }
-
-        entrySize <= Long.SIZE_BITS -> {
-            val bits = if (entrySize == Long.SIZE_BITS) -1L else (1L shl entrySize) - 1L
-            createI64EnumSet(bits, entries)
-        }
-
-        else -> {
-            val wordSize = (entrySize + 63) ushr 6
-            val words = LongArray(wordSize) { -1L }
-            val tail = entrySize and 63
-            if (tail != 0) {
-                words[wordSize - 1] = (1L shl tail) - 1L
-            }
-            createLargeEnumSet(words, entries)
-        }
-    }
-}
-
-/**
- * Returns an immutable empty [EnumSet].
- */
-@Suppress("UNCHECKED_CAST")
-public fun <E : Enum<E>> emptyEnumSetOf(): EnumSet<E> = EmptyEnumSet as EnumSet<E>
-
-/**
- * Creates an immutable [EnumSet] containing [elements].
- */
-public inline fun <reified E : Enum<E>> enumSetOf(vararg elements: E): EnumSet<E> {
-    val entries = enumEntries<E>()
-    val entrySize = entries.size
-    return when {
-        entrySize == 0 -> emptyEnumSetOf()
-        entrySize <= Int.SIZE_BITS -> createI32EnumSet(calculateI32BitSize(elements), entries)
-        entrySize <= Long.SIZE_BITS -> createI64EnumSet(calculateI64BitSize(elements), entries)
-        else -> createLargeEnumSet(calculateLargeBitSize(entrySize, elements), entries)
+        entrySize <= Int.SIZE_BITS -> createMutableI32EnumSet(calculateI32BitSize(elements), entries)
+        entrySize <= Long.SIZE_BITS -> createMutableI64EnumSet(calculateI64BitSize(elements), entries)
+        else -> createMutableLargeEnumSet(calculateLargeBitSize(entrySize, elements), entries)
     }
 }
 
 @PublishedApi
-internal fun <E : Enum<E>> calculateI32BitSize(elements: Array<out E>): Int {
-    if (elements.isEmpty()) return 0
-    var bits = 0
-    for (element in elements) {
-        bits = bits or (1 shl element.ordinal)
-    }
-    return bits
-}
+internal fun <E : Enum<E>> createMutableI32EnumSet(bs: Int, values: EnumEntries<E>): MutableEnumSet<E> =
+    MutableI32EnumSet(bs, values)
 
 @PublishedApi
-internal fun <E : Enum<E>> calculateI64BitSize(elements: Array<out E>): Long {
-    if (elements.isEmpty()) return 0L
-    var bits = 0L
-    for (element in elements) {
-        bits = bits or (1L shl element.ordinal)
-    }
-    return bits
-}
+internal fun <E : Enum<E>> createMutableI64EnumSet(bs: Long, values: EnumEntries<E>): MutableEnumSet<E> =
+    MutableI64EnumSet(bs, values)
 
 @PublishedApi
-internal fun <E : Enum<E>> calculateLargeBitSize(total: Int, elements: Array<out E>): LongArray {
-    if (elements.isEmpty()) return LongArray(0)
-
-    var maxOrdinal = 0
-    for (element in elements) {
-        val ordinal = element.ordinal
-        if (ordinal > maxOrdinal) maxOrdinal = ordinal
-        if (maxOrdinal == total - 1) break
-    }
-
-    val maxWordSize = (total + 63) ushr 6
-    val wordSize = minOf(maxWordSize, (maxOrdinal + 64) ushr 6)
-    val words = LongArray(wordSize)
-    for (element in elements) {
-        val ordinal = element.ordinal
-        val wordIndex = ordinal ushr 6
-        words[wordIndex] = words[wordIndex] or (1L shl (ordinal and 63))
-    }
-    return words
-}
-
-@PublishedApi
-internal fun <E : Enum<E>> createI32EnumSet(bs: Int, values: EnumEntries<E>): EnumSet<E> {
-    if (bs == 0) return emptyEnumSetOf()
-    return I32EnumSet(bs, values)
-}
-
-@PublishedApi
-internal fun <E : Enum<E>> createI64EnumSet(bs: Long, values: EnumEntries<E>): EnumSet<E> {
-    if (bs == 0L) return emptyEnumSetOf()
-    return I64EnumSet(bs, values)
-}
-
-@PublishedApi
-internal fun <E : Enum<E>> createLargeEnumSet(bs: LongArray, values: EnumEntries<E>): EnumSet<E> {
+internal fun <E : Enum<E>> createMutableLargeEnumSet(bs: LongArray, values: EnumEntries<E>): MutableEnumSet<E> {
     val lastNonZeroWordIndex = lastNonZeroIndex(bs)
-    if (lastNonZeroWordIndex < 0) return emptyEnumSetOf()
     val words = trimByLastNonZero(bs, lastNonZeroWordIndex)
-    return LargeEnumSet(words, values)
+    return MutableLargeEnumSet(words, values)
 }
 
-internal fun sameUniverse(left: EnumEntries<*>, right: EnumEntries<*>): Boolean {
-    if (left === right) return true
-    val size = left.size
-    if (size != right.size) return false
-    if (size == 0) return true
-    return left[0] === right[0] && left[size - 1] === right[size - 1]
+internal interface EnumEntriesBasedI32MutableEnumSet<E : Enum<E>> :
+    MutableEnumSet<E>, EnumEntriesBasedI32EnumSet<E> {
+    override var bs: Int
 }
 
-internal fun <E : Enum<E>> ordinalInUniverseOrMinusOne(element: Any?, values: EnumEntries<E>): Int {
-    if (element !is Enum<*>) return -1
-    val ordinal = element.ordinal
-    if (ordinal < 0 || ordinal >= values.size) return -1
-    return if (values[ordinal] === element) ordinal else -1
+internal interface EnumEntriesBasedI64MutableEnumSet<E : Enum<E>> :
+    MutableEnumSet<E>, EnumEntriesBasedI64EnumSet<E> {
+    override var bs: Long
 }
 
-internal fun bitCountOf(words: LongArray): Int {
-    var count = 0
-    for (word in words) {
-        count += word.countOneBits()
-    }
-    return count
+internal interface EnumEntriesBasedLargeMutableEnumSet<E : Enum<E>> :
+    MutableEnumSet<E>, EnumEntriesBasedLargeEnumSet<E> {
+    override var bs: LongArray
 }
 
-internal fun <E : Enum<E>> containsByOrdinal(bits: Int, values: EnumEntries<E>, element: Any?): Boolean {
-    val ordinal = ordinalInUniverseOrMinusOne(element, values)
-    return ordinal >= 0 && (bits and (1 shl ordinal)) != 0
-}
+private class GenericMutableEnumSet<E : Enum<E>>(private val delegate: MutableSet<E>) :
+    MutableEnumSet<E>, MutableSet<E> by delegate {
 
-internal fun <E : Enum<E>> containsByOrdinal(bits: Long, values: EnumEntries<E>, element: Any?): Boolean {
-    val ordinal = ordinalInUniverseOrMinusOne(element, values)
-    return ordinal >= 0 && (bits and (1L shl ordinal)) != 0L
-}
-
-internal fun <E : Enum<E>> containsByOrdinal(words: LongArray, values: EnumEntries<E>, element: Any?): Boolean {
-    val ordinal = ordinalInUniverseOrMinusOne(element, values)
-    if (ordinal < 0) return false
-    val wordIndex = ordinal ushr 6
-    return wordIndex < words.size && (words[wordIndex] and (1L shl (ordinal and 63))) != 0L
-}
-
-internal fun lastNonZeroIndex(words: LongArray): Int {
-    var index = words.size - 1
-    while (index >= 0 && words[index] == 0L) {
-        index--
-    }
-    return index
-}
-
-internal fun trimByLastNonZero(words: LongArray, lastNonZeroWordIndex: Int): LongArray = when {
-    lastNonZeroWordIndex < 0 -> LongArray(0)
-    lastNonZeroWordIndex == words.lastIndex -> words
-    else -> words.copyOf(lastNonZeroWordIndex + 1)
-}
-
-private object EmptyEnumSet : EnumSet<Nothing> {
-    override fun containsAny(elements: Collection<Nothing>): Boolean = false
-
-    override fun intersect(other: Set<Nothing>): Set<Nothing> = EmptyEnumSet
-
-    override fun union(other: Set<Nothing>): Set<Nothing> =
-        if (other.isEmpty()) EmptyEnumSet else GenericEnumSet(other.toSet())
-
-    override fun difference(other: Set<Nothing>): Set<Nothing> = EmptyEnumSet
-
-    override fun contains(element: Nothing): Boolean = false
-    override fun containsAll(elements: Collection<Nothing>): Boolean = elements.isEmpty()
-    override fun isEmpty(): Boolean = true
-    override fun iterator(): Iterator<Nothing> = emptySet<Nothing>().iterator()
-    override val size: Int get() = 0
-}
-
-internal sealed interface EnumEntriesBasedEnumSet<E : Enum<E>> : EnumSet<E> {
-    val values: EnumEntries<E>
-}
-
-internal interface EnumEntriesBasedI32EnumSet<E : Enum<E>> : EnumEntriesBasedEnumSet<E> {
-    val bs: Int
-}
-
-internal interface EnumEntriesBasedI64EnumSet<E : Enum<E>> : EnumEntriesBasedEnumSet<E> {
-    val bs: Long
-}
-
-internal interface EnumEntriesBasedLargeEnumSet<E : Enum<E>> : EnumEntriesBasedEnumSet<E> {
-    val bs: LongArray
-}
-
-internal class GenericEnumSet<E : Enum<E>>(private val delegate: Set<E>) : EnumSet<E>, Set<E> by delegate {
     override fun containsAny(elements: Collection<E>): Boolean {
         if (delegate.isEmpty() || elements.isEmpty()) return false
         if (elements is Set<*> && elements.size < delegate.size) {
@@ -283,7 +99,7 @@ internal class GenericEnumSet<E : Enum<E>>(private val delegate: Set<E>) : EnumS
 
     override fun intersect(other: Set<E>): Set<E> {
         if (delegate.isEmpty() || other.isEmpty()) return emptyEnumSetOf()
-        if (other === this) return this
+        if (other === this) return GenericEnumSet(delegate.toSet())
 
         val result = LinkedHashSet<E>(minOf(delegate.size, other.size))
         for (element in delegate) {
@@ -296,8 +112,8 @@ internal class GenericEnumSet<E : Enum<E>>(private val delegate: Set<E>) : EnumS
     }
 
     override fun union(other: Set<E>): Set<E> {
-        if (other.isEmpty()) return this
-        if (other === this) return this
+        if (other.isEmpty()) return GenericEnumSet(delegate.toSet())
+        if (other === this) return GenericEnumSet(delegate.toSet())
 
         val result = LinkedHashSet<E>(delegate.size + other.size)
         result.addAll(delegate)
@@ -307,7 +123,7 @@ internal class GenericEnumSet<E : Enum<E>>(private val delegate: Set<E>) : EnumS
 
     override fun difference(other: Set<E>): Set<E> {
         if (delegate.isEmpty()) return emptyEnumSetOf()
-        if (other.isEmpty()) return this
+        if (other.isEmpty()) return GenericEnumSet(delegate.toSet())
         if (other === this) return emptyEnumSetOf()
 
         val result = LinkedHashSet<E>(delegate.size)
@@ -327,10 +143,10 @@ internal class GenericEnumSet<E : Enum<E>>(private val delegate: Set<E>) : EnumS
     override fun toString(): String = delegate.toString()
 }
 
-private class I32EnumSet<E : Enum<E>>(
-    override val bs: Int,
+private class MutableI32EnumSet<E : Enum<E>>(
+    override var bs: Int = 0,
     override val values: EnumEntries<E>
-) : EnumEntriesBasedI32EnumSet<E> {
+) : EnumEntriesBasedI32MutableEnumSet<E> {
     override fun contains(element: E): Boolean = (bs and (1 shl element.ordinal)) != 0
 
     override fun containsAll(elements: Collection<E>): Boolean {
@@ -374,7 +190,7 @@ private class I32EnumSet<E : Enum<E>>(
     override fun intersect(other: Set<E>): Set<E> {
         val currentBits = bs
         if (currentBits == 0 || other.isEmpty()) return emptyEnumSetOf()
-        if (other === this) return this
+        if (other === this) return createI32EnumSet(currentBits, values)
 
         if (other is EnumEntriesBasedI32EnumSet<*>) {
             if (!sameUniverse(values, other.values)) return emptyEnumSetOf()
@@ -407,11 +223,11 @@ private class I32EnumSet<E : Enum<E>>(
 
     override fun union(other: Set<E>): Set<E> {
         val currentBits = bs
-        if (other.isEmpty()) return this
-        if (other === this) return this
+        if (other.isEmpty()) return createI32EnumSet(currentBits, values)
+        if (other === this) return createI32EnumSet(currentBits, values)
 
         if (other is EnumEntriesBasedI32EnumSet<*>) {
-            if (!sameUniverse(values, other.values)) return this
+            if (!sameUniverse(values, other.values)) return createI32EnumSet(currentBits, values)
             return createI32EnumSet(currentBits or other.bs, values)
         }
 
@@ -428,11 +244,11 @@ private class I32EnumSet<E : Enum<E>>(
 
     override fun difference(other: Set<E>): Set<E> {
         val currentBits = bs
-        if (currentBits == 0 || other.isEmpty()) return this
+        if (currentBits == 0 || other.isEmpty()) return createI32EnumSet(currentBits, values)
         if (other === this) return emptyEnumSetOf()
 
         if (other is EnumEntriesBasedI32EnumSet<*>) {
-            if (!sameUniverse(values, other.values)) return this
+            if (!sameUniverse(values, other.values)) return createI32EnumSet(currentBits, values)
             return createI32EnumSet(currentBits and other.bs.inv(), values)
         }
 
@@ -449,8 +265,9 @@ private class I32EnumSet<E : Enum<E>>(
 
     override fun isEmpty(): Boolean = bs == 0
 
-    override fun iterator(): Iterator<E> = object : Iterator<E> {
+    override fun iterator(): MutableIterator<E> = object : MutableIterator<E> {
         private var remaining = bs
+        private var lastBit = -1
 
         override fun hasNext(): Boolean = remaining != 0
 
@@ -458,13 +275,128 @@ private class I32EnumSet<E : Enum<E>>(
             val current = remaining
             if (current == 0) throw NoSuchElementException()
             val bit = current.countTrailingZeroBits()
+            lastBit = bit
             remaining = current and (current - 1)
             return values[bit]
+        }
+
+        override fun remove() {
+            check(lastBit >= 0) { "next() must be called before remove()" }
+            bs = bs and (1 shl lastBit).inv()
+            lastBit = -1
         }
     }
 
     override val size: Int
         get() = bs.countOneBits()
+
+    override fun add(element: E): Boolean {
+        val oldBits = bs
+        bs = oldBits or (1 shl element.ordinal)
+        return bs != oldBits
+    }
+
+    override fun addAll(elements: Collection<E>): Boolean {
+        if (elements.isEmpty()) return false
+
+        if (elements is EnumEntriesBasedI32EnumSet<*>) {
+            if (!sameUniverse(values, elements.values)) return false
+            val oldBits = bs
+            bs = oldBits or elements.bs
+            return bs != oldBits
+        }
+
+        val oldBits = bs
+        var mergedBits = oldBits
+        for (element in elements) {
+            val ordinal = ordinalInUniverseOrMinusOne(element, values)
+            if (ordinal >= 0) {
+                mergedBits = mergedBits or (1 shl ordinal)
+            }
+        }
+        bs = mergedBits
+
+        return bs != oldBits
+    }
+
+    override fun clear() {
+        bs = 0
+    }
+
+    override fun remove(element: E): Boolean {
+        val oldBits = bs
+        bs = oldBits and (1 shl element.ordinal).inv()
+        return bs != oldBits
+    }
+
+    override fun removeAll(elements: Collection<E>): Boolean {
+        if (elements.isEmpty() || bs == 0) return false
+
+        if (elements is EnumEntriesBasedI32EnumSet<*>) {
+            if (!sameUniverse(values, elements.values)) return false
+            val oldBits = bs
+            bs = oldBits and elements.bs.inv()
+            return bs != oldBits
+        }
+
+        var removeMask = 0
+        for (element in elements) {
+            val ordinal = ordinalInUniverseOrMinusOne(element, values)
+            if (ordinal >= 0) {
+                removeMask = removeMask or (1 shl ordinal)
+            }
+        }
+
+        if (removeMask == 0) return false
+
+        val oldBits = bs
+        bs = oldBits and removeMask.inv()
+        return bs != oldBits
+    }
+
+    override fun retainAll(elements: Collection<E>): Boolean {
+        val currentBits = bs
+        if (currentBits == 0) return false
+
+        if (elements is EnumEntriesBasedI32EnumSet<*>) {
+            if (!sameUniverse(values, elements.values)) {
+                bs = 0
+                return true
+            }
+            val retainedBits = currentBits and elements.bs
+            if (retainedBits == currentBits) return false
+            bs = retainedBits
+            return true
+        }
+
+        if (elements.isEmpty()) {
+            bs = 0
+            return true
+        }
+
+        var retainedBits = 0
+        if (elements is Set<*> && elements.size > currentBits.countOneBits()) {
+            var remaining = currentBits
+            while (remaining != 0) {
+                val bit = remaining.countTrailingZeroBits()
+                if (elements.contains(values[bit])) {
+                    retainedBits = retainedBits or (1 shl bit)
+                }
+                remaining = remaining and (remaining - 1)
+            }
+        } else {
+            for (element in elements) {
+                val ordinal = ordinalInUniverseOrMinusOne(element, values)
+                if (ordinal < 0) continue
+                val mask = 1 shl ordinal
+                retainedBits = retainedBits or (currentBits and mask)
+            }
+        }
+
+        if (retainedBits == currentBits) return false
+        bs = retainedBits
+        return true
+    }
 
     override fun toString(): String = joinToString(", ", "[", "]")
 
@@ -500,10 +432,10 @@ private class I32EnumSet<E : Enum<E>>(
     }
 }
 
-private class I64EnumSet<E : Enum<E>>(
-    override val bs: Long,
+private class MutableI64EnumSet<E : Enum<E>>(
+    override var bs: Long = 0L,
     override val values: EnumEntries<E>
-) : EnumEntriesBasedI64EnumSet<E> {
+) : EnumEntriesBasedI64MutableEnumSet<E> {
     override fun contains(element: E): Boolean = (bs and (1L shl element.ordinal)) != 0L
 
     override fun containsAll(elements: Collection<E>): Boolean {
@@ -547,7 +479,7 @@ private class I64EnumSet<E : Enum<E>>(
     override fun intersect(other: Set<E>): Set<E> {
         val currentBits = bs
         if (currentBits == 0L || other.isEmpty()) return emptyEnumSetOf()
-        if (other === this) return this
+        if (other === this) return createI64EnumSet(currentBits, values)
 
         if (other is EnumEntriesBasedI64EnumSet<*>) {
             if (!sameUniverse(values, other.values)) return emptyEnumSetOf()
@@ -580,11 +512,11 @@ private class I64EnumSet<E : Enum<E>>(
 
     override fun union(other: Set<E>): Set<E> {
         val currentBits = bs
-        if (other.isEmpty()) return this
-        if (other === this) return this
+        if (other.isEmpty()) return createI64EnumSet(currentBits, values)
+        if (other === this) return createI64EnumSet(currentBits, values)
 
         if (other is EnumEntriesBasedI64EnumSet<*>) {
-            if (!sameUniverse(values, other.values)) return this
+            if (!sameUniverse(values, other.values)) return createI64EnumSet(currentBits, values)
             return createI64EnumSet(currentBits or other.bs, values)
         }
 
@@ -601,11 +533,11 @@ private class I64EnumSet<E : Enum<E>>(
 
     override fun difference(other: Set<E>): Set<E> {
         val currentBits = bs
-        if (currentBits == 0L || other.isEmpty()) return this
+        if (currentBits == 0L || other.isEmpty()) return createI64EnumSet(currentBits, values)
         if (other === this) return emptyEnumSetOf()
 
         if (other is EnumEntriesBasedI64EnumSet<*>) {
-            if (!sameUniverse(values, other.values)) return this
+            if (!sameUniverse(values, other.values)) return createI64EnumSet(currentBits, values)
             return createI64EnumSet(currentBits and other.bs.inv(), values)
         }
 
@@ -622,8 +554,9 @@ private class I64EnumSet<E : Enum<E>>(
 
     override fun isEmpty(): Boolean = bs == 0L
 
-    override fun iterator(): Iterator<E> = object : Iterator<E> {
+    override fun iterator(): MutableIterator<E> = object : MutableIterator<E> {
         private var remaining = bs
+        private var lastBit = -1
 
         override fun hasNext(): Boolean = remaining != 0L
 
@@ -631,13 +564,128 @@ private class I64EnumSet<E : Enum<E>>(
             val current = remaining
             if (current == 0L) throw NoSuchElementException()
             val bit = current.countTrailingZeroBits()
+            lastBit = bit
             remaining = current and (current - 1)
             return values[bit]
+        }
+
+        override fun remove() {
+            check(lastBit >= 0) { "next() must be called before remove()" }
+            bs = bs and (1L shl lastBit).inv()
+            lastBit = -1
         }
     }
 
     override val size: Int
         get() = bs.countOneBits()
+
+    override fun add(element: E): Boolean {
+        val oldBits = bs
+        bs = oldBits or (1L shl element.ordinal)
+        return bs != oldBits
+    }
+
+    override fun addAll(elements: Collection<E>): Boolean {
+        if (elements.isEmpty()) return false
+
+        if (elements is EnumEntriesBasedI64EnumSet<*>) {
+            if (!sameUniverse(values, elements.values)) return false
+            val oldBits = bs
+            bs = oldBits or elements.bs
+            return bs != oldBits
+        }
+
+        val oldBits = bs
+        var mergedBits = oldBits
+        for (element in elements) {
+            val ordinal = ordinalInUniverseOrMinusOne(element, values)
+            if (ordinal >= 0) {
+                mergedBits = mergedBits or (1L shl ordinal)
+            }
+        }
+        bs = mergedBits
+
+        return bs != oldBits
+    }
+
+    override fun clear() {
+        bs = 0L
+    }
+
+    override fun remove(element: E): Boolean {
+        val oldBits = bs
+        bs = oldBits and (1L shl element.ordinal).inv()
+        return bs != oldBits
+    }
+
+    override fun removeAll(elements: Collection<E>): Boolean {
+        if (elements.isEmpty() || bs == 0L) return false
+
+        if (elements is EnumEntriesBasedI64EnumSet<*>) {
+            if (!sameUniverse(values, elements.values)) return false
+            val oldBits = bs
+            bs = oldBits and elements.bs.inv()
+            return bs != oldBits
+        }
+
+        var removeMask = 0L
+        for (element in elements) {
+            val ordinal = ordinalInUniverseOrMinusOne(element, values)
+            if (ordinal >= 0) {
+                removeMask = removeMask or (1L shl ordinal)
+            }
+        }
+
+        if (removeMask == 0L) return false
+
+        val oldBits = bs
+        bs = oldBits and removeMask.inv()
+        return bs != oldBits
+    }
+
+    override fun retainAll(elements: Collection<E>): Boolean {
+        val currentBits = bs
+        if (currentBits == 0L) return false
+
+        if (elements is EnumEntriesBasedI64EnumSet<*>) {
+            if (!sameUniverse(values, elements.values)) {
+                bs = 0L
+                return true
+            }
+            val retainedBits = currentBits and elements.bs
+            if (retainedBits == currentBits) return false
+            bs = retainedBits
+            return true
+        }
+
+        if (elements.isEmpty()) {
+            bs = 0L
+            return true
+        }
+
+        var retainedBits = 0L
+        if (elements is Set<*> && elements.size > currentBits.countOneBits()) {
+            var remaining = currentBits
+            while (remaining != 0L) {
+                val bit = remaining.countTrailingZeroBits()
+                if (elements.contains(values[bit])) {
+                    retainedBits = retainedBits or (1L shl bit)
+                }
+                remaining = remaining and (remaining - 1)
+            }
+        } else {
+            for (element in elements) {
+                val ordinal = ordinalInUniverseOrMinusOne(element, values)
+                if (ordinal < 0) continue
+                val mask = 1L shl ordinal
+                retainedBits = retainedBits or (currentBits and mask)
+            }
+        }
+
+        if (retainedBits == currentBits) return false
+        bs = retainedBits
+        return true
+    }
 
     override fun toString(): String = joinToString(", ", "[", "]")
 
@@ -673,10 +721,10 @@ private class I64EnumSet<E : Enum<E>>(
     }
 }
 
-private class LargeEnumSet<E : Enum<E>>(
-    override val bs: LongArray,
+private class MutableLargeEnumSet<E : Enum<E>>(
+    override var bs: LongArray = longArrayOf(),
     override val values: EnumEntries<E>
-) : EnumEntriesBasedLargeEnumSet<E> {
+) : EnumEntriesBasedLargeMutableEnumSet<E> {
     override fun contains(element: E): Boolean {
         val ordinal = element.ordinal
         val wordIndex = ordinal ushr 6
@@ -727,7 +775,7 @@ private class LargeEnumSet<E : Enum<E>>(
 
     override fun intersect(other: Set<E>): Set<E> {
         if (bs.isEmpty() || other.isEmpty()) return emptyEnumSetOf()
-        if (other === this) return this
+        if (other === this) return createLargeEnumSet(bs.copyOf(), values)
 
         if (other is EnumEntriesBasedLargeEnumSet<*>) {
             if (!sameUniverse(values, other.values)) return emptyEnumSetOf()
@@ -746,7 +794,6 @@ private class LargeEnumSet<E : Enum<E>>(
         val currentWords = bs
         val resultWords = LongArray(currentWords.size)
         var lastNonZeroWordIndex = -1
-
         if (other.size < size) {
             for (element in other) {
                 val ordinal = ordinalInUniverseOrMinusOne(element, values)
@@ -771,16 +818,15 @@ private class LargeEnumSet<E : Enum<E>>(
                 }
             }
         }
-
         return createLargeEnumSet(trimByLastNonZero(resultWords, lastNonZeroWordIndex), values)
     }
 
     override fun union(other: Set<E>): Set<E> {
-        if (other.isEmpty()) return this
-        if (other === this) return this
+        if (other.isEmpty()) return createLargeEnumSet(bs.copyOf(), values)
+        if (other === this) return createLargeEnumSet(bs.copyOf(), values)
 
         if (other is EnumEntriesBasedLargeEnumSet<*>) {
-            if (!sameUniverse(values, other.values)) return this
+            if (!sameUniverse(values, other.values)) return createLargeEnumSet(bs.copyOf(), values)
             val otherWords = other.bs
             val maxSize = maxOf(bs.size, otherWords.size)
             val resultWords = LongArray(maxSize)
@@ -802,16 +848,15 @@ private class LargeEnumSet<E : Enum<E>>(
             }
             resultWords[wordIndex] = resultWords[wordIndex] or (1L shl (ordinal and 63))
         }
-
         return createLargeEnumSet(resultWords, values)
     }
 
     override fun difference(other: Set<E>): Set<E> {
-        if (bs.isEmpty() || other.isEmpty()) return this
+        if (bs.isEmpty() || other.isEmpty()) return createLargeEnumSet(bs.copyOf(), values)
         if (other === this) return emptyEnumSetOf()
 
         if (other is EnumEntriesBasedLargeEnumSet<*>) {
-            if (!sameUniverse(values, other.values)) return this
+            if (!sameUniverse(values, other.values)) return createLargeEnumSet(bs.copyOf(), values)
             val otherWords = other.bs
             val resultWords = bs.copyOf()
             val minSize = minOf(resultWords.size, otherWords.size)
@@ -830,7 +875,7 @@ private class LargeEnumSet<E : Enum<E>>(
         }
 
         val resultWords = bs.copyOf()
-        var removed = false
+        var removeMaskExists = false
         for (element in other) {
             val ordinal = ordinalInUniverseOrMinusOne(element, values)
             if (ordinal < 0) continue
@@ -839,20 +884,22 @@ private class LargeEnumSet<E : Enum<E>>(
             val oldWord = resultWords[wordIndex]
             val newWord = oldWord and (1L shl (ordinal and 63)).inv()
             if (newWord != oldWord) {
-                removed = true
+                removeMaskExists = true
                 resultWords[wordIndex] = newWord
             }
         }
 
-        if (!removed) return this
+        if (!removeMaskExists) return createLargeEnumSet(bs.copyOf(), values)
         return createLargeEnumSet(trimByLastNonZero(resultWords, lastNonZeroIndex(resultWords)), values)
     }
 
     override fun isEmpty(): Boolean = bs.isEmpty()
 
-    override fun iterator(): Iterator<E> = object : Iterator<E> {
+    override fun iterator(): MutableIterator<E> = object : MutableIterator<E> {
         private var currentWordIndex = 0
         private var currentWord = if (bs.isNotEmpty()) bs[0] else 0L
+        private var lastReturnedWordIndex = -1
+        private var lastReturnedBit = -1
 
         override fun hasNext(): Boolean {
             while (currentWord == 0L && currentWordIndex < bs.lastIndex) {
@@ -865,13 +912,221 @@ private class LargeEnumSet<E : Enum<E>>(
         override fun next(): E {
             if (!hasNext()) throw NoSuchElementException()
             val bit = currentWord.countTrailingZeroBits()
+            lastReturnedWordIndex = currentWordIndex
+            lastReturnedBit = bit
             currentWord = currentWord and (currentWord - 1)
             return values[(currentWordIndex shl 6) + bit]
+        }
+
+        override fun remove() {
+            check(lastReturnedWordIndex >= 0) { "next() must be called before remove()" }
+            val wordIndex = lastReturnedWordIndex
+            val newWord = bs[wordIndex] and (1L shl lastReturnedBit).inv()
+            bs[wordIndex] = newWord
+            if (wordIndex == bs.lastIndex && newWord == 0L) {
+                bs = trimByLastNonZero(bs, lastNonZeroIndex(bs))
+                if (currentWordIndex >= bs.size) {
+                    currentWordIndex = bs.size
+                    currentWord = 0L
+                }
+            }
+            lastReturnedWordIndex = -1
+            lastReturnedBit = -1
         }
     }
 
     override val size: Int
         get() = bitCountOf(bs)
+
+    override fun add(element: E): Boolean {
+        val ordinal = element.ordinal
+        val wordIndex = ordinal ushr 6
+        if (wordIndex >= bs.size) {
+            bs = bs.copyOf(wordIndex + 1)
+        }
+        val oldWord = bs[wordIndex]
+        val newWord = oldWord or (1L shl (ordinal and 63))
+        bs[wordIndex] = newWord
+        return newWord != oldWord
+    }
+
+    override fun addAll(elements: Collection<E>): Boolean {
+        if (elements.isEmpty()) return false
+
+        if (elements is EnumEntriesBasedLargeEnumSet<*>) {
+            if (!sameUniverse(values, elements.values)) return false
+            val otherWords = elements.bs
+            if (otherWords.isEmpty()) return false
+            if (otherWords.size > bs.size) {
+                bs = bs.copyOf(otherWords.size)
+            }
+            var modified = false
+            for (wordIndex in otherWords.indices) {
+                val oldWord = bs[wordIndex]
+                val newWord = oldWord or otherWords[wordIndex]
+                if (newWord != oldWord) modified = true
+                bs[wordIndex] = newWord
+            }
+            return modified
+        }
+
+        var modified = false
+        for (element in elements) {
+            if (add(element)) modified = true
+        }
+        return modified
+    }
+
+    override fun clear() {
+        bs = LongArray(0)
+    }
+
+    override fun remove(element: E): Boolean {
+        val ordinal = element.ordinal
+        val wordIndex = ordinal ushr 6
+        if (wordIndex >= bs.size) return false
+
+        val oldWord = bs[wordIndex]
+        val newWord = oldWord and (1L shl (ordinal and 63)).inv()
+        if (newWord == oldWord) return false
+
+        bs[wordIndex] = newWord
+        if (wordIndex == bs.lastIndex && newWord == 0L) {
+            bs = trimByLastNonZero(bs, lastNonZeroIndex(bs))
+        }
+        return true
+    }
+
+    override fun removeAll(elements: Collection<E>): Boolean {
+        if (elements.isEmpty() || bs.isEmpty()) return false
+
+        if (elements is EnumEntriesBasedLargeEnumSet<*>) {
+            if (!sameUniverse(values, elements.values)) return false
+            val otherWords = elements.bs
+            val minSize = minOf(bs.size, otherWords.size)
+            var modified = false
+            var lastNonZeroWordIndex = -1
+            var wordIndex = 0
+            while (wordIndex < minSize) {
+                val oldWord = bs[wordIndex]
+                val newWord = oldWord and otherWords[wordIndex].inv()
+                if (newWord != oldWord) modified = true
+                bs[wordIndex] = newWord
+                if (newWord != 0L) lastNonZeroWordIndex = wordIndex
+                wordIndex++
+            }
+            while (wordIndex < bs.size) {
+                if (bs[wordIndex] != 0L) lastNonZeroWordIndex = wordIndex
+                wordIndex++
+            }
+            if (!modified) return false
+            bs = trimByLastNonZero(bs, lastNonZeroWordIndex)
+            return true
+        }
+
+        val removeMaskWords = LongArray(bs.size)
+        var removeMaskExists = false
+        for (element in elements) {
+            val ordinal = ordinalInUniverseOrMinusOne(element, values)
+            if (ordinal < 0) continue
+            val wordIndex = ordinal ushr 6
+            if (wordIndex >= bs.size) continue
+            removeMaskWords[wordIndex] = removeMaskWords[wordIndex] or (1L shl (ordinal and 63))
+            removeMaskExists = true
+        }
+
+        if (!removeMaskExists) return false
+
+        var modified = false
+        var lastNonZeroWordIndex = -1
+        for (wordIndex in bs.indices) {
+            val oldWord = bs[wordIndex]
+            val newWord = oldWord and removeMaskWords[wordIndex].inv()
+            if (newWord != oldWord) modified = true
+            bs[wordIndex] = newWord
+            if (newWord != 0L) lastNonZeroWordIndex = wordIndex
+        }
+
+        if (!modified) return false
+        bs = trimByLastNonZero(bs, lastNonZeroWordIndex)
+        return true
+    }
+
+    override fun retainAll(elements: Collection<E>): Boolean {
+        if (bs.isEmpty()) return false
+
+        if (elements is EnumEntriesBasedLargeEnumSet<*>) {
+            if (!sameUniverse(values, elements.values)) {
+                bs = LongArray(0)
+                return true
+            }
+            val otherWords = elements.bs
+            val minSize = minOf(bs.size, otherWords.size)
+            var modified = false
+            var lastNonZeroWordIndex = -1
+            for (wordIndex in 0 until minSize) {
+                val oldWord = bs[wordIndex]
+                val newWord = oldWord and otherWords[wordIndex]
+                if (newWord != oldWord) modified = true
+                bs[wordIndex] = newWord
+                if (newWord != 0L) lastNonZeroWordIndex = wordIndex
+            }
+            for (wordIndex in minSize until bs.size) {
+                if (bs[wordIndex] != 0L) modified = true
+                bs[wordIndex] = 0L
+            }
+            if (!modified) return false
+            bs = trimByLastNonZero(bs, lastNonZeroWordIndex)
+            return true
+        }
+
+        if (elements.isEmpty()) {
+            bs = LongArray(0)
+            return true
+        }
+
+        val currentWords = bs
+        val retainedWords = LongArray(currentWords.size)
+        var lastNonZeroWordIndex = -1
+        if (elements is Set<*> && elements.size > size) {
+            for (wordIndex in currentWords.indices) {
+                var word = currentWords[wordIndex]
+                while (word != 0L) {
+                    val bit = word.countTrailingZeroBits()
+                    if (elements.contains(values[(wordIndex shl 6) + bit])) {
+                        retainedWords[wordIndex] = retainedWords[wordIndex] or (1L shl bit)
+                        lastNonZeroWordIndex = wordIndex
+                    }
+                    word = word and (word - 1)
+                }
+            }
+        } else {
+            for (element in elements) {
+                val ordinal = ordinalInUniverseOrMinusOne(element, values)
+                if (ordinal < 0) continue
+                val wordIndex = ordinal ushr 6
+                if (wordIndex >= currentWords.size) continue
+                val bitMask = 1L shl (ordinal and 63)
+                if ((currentWords[wordIndex] and bitMask) == 0L) continue
+                retainedWords[wordIndex] = retainedWords[wordIndex] or bitMask
+                if (wordIndex > lastNonZeroWordIndex) lastNonZeroWordIndex = wordIndex
+            }
+        }
+
+        var modified = currentWords.size != (lastNonZeroWordIndex + 1)
+        if (!modified) {
+            for (wordIndex in 0..lastNonZeroWordIndex) {
+                if (retainedWords[wordIndex] != currentWords[wordIndex]) {
+                    modified = true
+                    break
+                }
+            }
+        }
+
+        if (!modified) return false
+        bs = trimByLastNonZero(retainedWords, lastNonZeroWordIndex)
+        return true
+    }
 
     override fun toString(): String = joinToString(", ", "[", "]")
 
@@ -883,7 +1138,6 @@ private class LargeEnumSet<E : Enum<E>>(
             if (!sameUniverse(values, other.values)) {
                 return bs.isEmpty() && other.bs.isEmpty()
             }
-
             val leftWords = bs
             val rightWords = other.bs
             val minSize = minOf(leftWords.size, rightWords.size)
