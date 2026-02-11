@@ -7,14 +7,30 @@ import kotlin.enums.enumEntries
 /**
  * A mutable [EnumMap].
  */
-public interface MutableEnumMap<E : Enum<E>, V> : EnumMap<E, V>, MutableMap<E, V>
+public interface MutableEnumMap<E : Enum<E>, V> : EnumMap<E, V>, MutableMap<E, V> {
+    /**
+     * Returns an independent mutable copy of this map.
+     *
+     * Example:
+     * ```kotlin
+     * val original = mutableEnumMapOf(State.INIT to 0)
+     * val copy = original.copy()
+     * copy[State.RUNNING] = 1
+     * ```
+     */
+    public fun copy(): MutableEnumMap<E, V>
+}
 
 /**
  * Converts this map to a mutable [MutableEnumMap].
  *
  * Similar to Kotlin's `toMutableMap`, this creates an independent mutable copy.
+ *
+ * Example: `val mutable = enumMapOf(State.INIT to 0).toMutableEnumMap()`
  */
 public fun <E : Enum<E>, V> Map<E, V>.toMutableEnumMap(): MutableEnumMap<E, V> {
+    if (this is MutableEnumMap<E, V>) return copy()
+
     @Suppress("UNCHECKED_CAST")
     return when (this) {
         is EnumEntriesBasedI32EnumMap<*, *> -> {
@@ -38,6 +54,8 @@ public fun <E : Enum<E>, V> Map<E, V>.toMutableEnumMap(): MutableEnumMap<E, V> {
 
 /**
  * Creates a mutable [MutableEnumMap] from [pairs].
+ *
+ * Example: `mutableEnumMapOf(State.INIT to 0, State.RUNNING to 1)`
  */
 public inline fun <reified E : Enum<E>, V> mutableEnumMapOf(vararg pairs: Pair<E, V>): MutableEnumMap<E, V> {
     val universe = enumEntries<E>()
@@ -54,7 +72,12 @@ public inline fun <reified E : Enum<E>, V> mutableEnumMapOf(vararg pairs: Pair<E
 internal fun <E : Enum<E>, V> createMutableEnumMap(universe: EnumEntries<E>): MutableEnumMap<E, V> = when {
     universe.size <= Int.SIZE_BITS -> MutableI32EnumMap(universe)
     universe.size <= Long.SIZE_BITS -> MutableI64EnumMap(universe)
-    else -> MutableLargeEnumMap(universe)
+    else -> MutableLargeEnumMap(
+        universe = universe,
+        keyWords = LongArray((universe.size + 63) ushr 6),
+        slots = arrayOfNulls(universe.size),
+        mapSize = 0
+    )
 }
 
 @PublishedApi
@@ -85,13 +108,21 @@ internal fun <E : Enum<E>, V> createMutableLargeEnumMap(
     slots: Array<Any?>,
     universe: EnumEntries<E>
 ): MutableEnumMap<E, V> {
-    val lastWordIndex = mapLastNonZeroWordIndex(keyWords)
-    if (lastWordIndex < 0) return MutableLargeEnumMap(universe)
+    val wordCapacity = (universe.size + 63) ushr 6
+    val normalizedWords = LongArray(wordCapacity)
+    if (keyWords.isNotEmpty()) {
+        val copySize = minOf(keyWords.size, wordCapacity)
+        keyWords.copyInto(normalizedWords, endIndex = copySize)
+    }
 
-    val trimmedWords = if (lastWordIndex == keyWords.lastIndex) keyWords.copyOf() else keyWords.copyOf(lastWordIndex + 1)
-    val requiredSlotSize = maxOf(mapHighestOrdinalPlusOne(trimmedWords), slots.size)
-    val normalizedSlots = slots.copyOf(requiredSlotSize)
-    return MutableLargeEnumMap(universe, trimmedWords, normalizedSlots, mapBitCountOfWords(trimmedWords))
+    val slotCapacity = universe.size
+    val normalizedSlots = arrayOfNulls<Any?>(slotCapacity)
+    if (slots.isNotEmpty()) {
+        val copySize = minOf(slots.size, slotCapacity)
+        slots.copyInto(normalizedSlots, endIndex = copySize)
+    }
+
+    return MutableLargeEnumMap(universe, normalizedWords, normalizedSlots, mapBitCountOfWords(normalizedWords))
 }
 
 internal interface EnumEntriesBasedI32MutableEnumMap<E : Enum<E>, V> :
@@ -115,6 +146,8 @@ internal interface EnumEntriesBasedLargeMutableEnumMap<E : Enum<E>, V> :
 
 private class GenericMutableEnumMap<E : Enum<E>, V>(private val delegate: MutableMap<E, V>) :
     MutableEnumMap<E, V>, MutableMap<E, V> by delegate {
+    override fun copy(): MutableEnumMap<E, V> = GenericMutableEnumMap(delegate.toMutableMap())
+
     override fun equals(other: Any?): Boolean = delegate == other
 
     override fun hashCode(): Int = delegate.hashCode()
@@ -168,6 +201,8 @@ private class MutableI32EnumMap<E : Enum<E>, V>(
         if (ordinal < 0 || !containsOrdinal(ordinal)) return null
         return valueAt(ordinal)
     }
+
+    override fun copy(): MutableEnumMap<E, V> = createMutableI32EnumMap(keyBits, slots, universe)
 
     override fun put(key: E, value: V): V? {
         val ordinal = keyOrdinalOrMinusOne(key)
@@ -415,6 +450,8 @@ private class MutableI64EnumMap<E : Enum<E>, V>(
         return valueAt(ordinal)
     }
 
+    override fun copy(): MutableEnumMap<E, V> = createMutableI64EnumMap(keyBits, slots, universe)
+
     override fun put(key: E, value: V): V? {
         val ordinal = keyOrdinalOrMinusOne(key)
         if (ordinal < 0) return null
@@ -635,24 +672,16 @@ private class MutableLargeEnumMap<E : Enum<E>, V>(
     private fun valueAt(ordinal: Int): V = slots[ordinal] as V
 
     private fun ensureCapacityForOrdinal(ordinal: Int) {
-        val requiredWordSize = (ordinal ushr 6) + 1
-        if (requiredWordSize > keyWords.size) {
-            keyWords = keyWords.copyOf(requiredWordSize)
+        if (ordinal < slots.size && (ordinal ushr 6) < keyWords.size) return
+
+        val wordCapacity = (universe.size + 63) ushr 6
+        if (keyWords.size < wordCapacity) {
+            keyWords = keyWords.copyOf(wordCapacity)
         }
 
-        if (ordinal < slots.size) return
-
-        val requiredSize = ordinal + 1
-        var newSize = if (slots.isEmpty()) minOf(8, universe.size) else slots.size
-        while (newSize < requiredSize) {
-            val grown = newSize + (newSize ushr 1)
-            newSize = if (grown <= newSize) requiredSize else grown
+        if (slots.size < universe.size) {
+            slots = slots.copyOf(universe.size)
         }
-
-        if (newSize > universe.size) {
-            newSize = universe.size
-        }
-        slots = slots.copyOf(newSize)
     }
 
     private fun removeByOrdinal(ordinal: Int) {
@@ -666,23 +695,6 @@ private class MutableLargeEnumMap<E : Enum<E>, V>(
             slots[ordinal] = null
         }
         mapSize--
-
-        val lastNonZeroWordIndex = mapLastNonZeroWordIndex(keyWords)
-        if (lastNonZeroWordIndex < 0) {
-            keyWords = LongArray(0)
-            slots = emptyArray()
-            mapSize = 0
-            return
-        }
-
-        if (lastNonZeroWordIndex < keyWords.lastIndex) {
-            keyWords = keyWords.copyOf(lastNonZeroWordIndex + 1)
-        }
-
-        val requiredSlotSize = mapHighestOrdinalPlusOne(keyWords)
-        if (slots.size > requiredSlotSize) {
-            slots = slots.copyOf(requiredSlotSize)
-        }
     }
 
     override val size: Int
@@ -710,9 +722,11 @@ private class MutableLargeEnumMap<E : Enum<E>, V>(
 
     override fun get(key: E): V? {
         val ordinal = keyOrdinalOrMinusOne(key)
-        if (ordinal < 0 || !containsOrdinal(ordinal) || ordinal >= slots.size) return null
+        if (ordinal < 0 || !containsOrdinal(ordinal)) return null
         return valueAt(ordinal)
     }
+
+    override fun copy(): MutableEnumMap<E, V> = createMutableLargeEnumMap(keyWords, slots, universe)
 
     override fun put(key: E, value: V): V? {
         val ordinal = keyOrdinalOrMinusOne(key)
@@ -736,7 +750,7 @@ private class MutableLargeEnumMap<E : Enum<E>, V>(
         val ordinal = keyOrdinalOrMinusOne(key)
         if (ordinal < 0 || !containsOrdinal(ordinal)) return null
 
-        val oldValue = if (ordinal < slots.size) valueAt(ordinal) else null
+        val oldValue = valueAt(ordinal)
         removeByOrdinal(ordinal)
         return oldValue
     }
@@ -754,9 +768,8 @@ private class MutableLargeEnumMap<E : Enum<E>, V>(
                 keyWords = keyWords.copyOf(sourceWords.size)
             }
 
-            val requiredSlots = maxOf(slots.size, source.slots.size)
-            if (requiredSlots > slots.size) {
-                slots = slots.copyOf(requiredSlots)
+            if (slots.size < universe.size) {
+                slots = slots.copyOf(universe.size)
             }
 
             var addedCount = 0
@@ -804,8 +817,7 @@ private class MutableLargeEnumMap<E : Enum<E>, V>(
                 word = word and (word - 1)
             }
         }
-        keyWords = LongArray(0)
-        slots = emptyArray()
+        keyWords.fill(0L)
         mapSize = 0
     }
 

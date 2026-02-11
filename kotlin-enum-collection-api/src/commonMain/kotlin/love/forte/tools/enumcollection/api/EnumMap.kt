@@ -8,11 +8,21 @@ import kotlin.enums.enumEntries
  * A map specialized for enum keys.
  *
  * Implementations use ordinal-indexed storage to reduce lookup overhead and object allocation.
+ *
+ * Example:
+ * ```kotlin
+ * enum class State { INIT, RUNNING }
+ *
+ * val map = enumMapOf(State.INIT to 0)
+ * val code = map[State.INIT] // 0
+ * ```
  */
 public interface EnumMap<E : Enum<E>, V> : Map<E, V>
 
 /**
  * Returns an immutable empty [EnumMap].
+ *
+ * Example: `emptyEnumMapOf<State, Int>().isEmpty()`
  */
 @Suppress("UNCHECKED_CAST")
 public fun <E : Enum<E>, V> emptyEnumMapOf(): EnumMap<E, V> = EmptyEnumMap as EnumMap<E, V>
@@ -21,6 +31,14 @@ public fun <E : Enum<E>, V> emptyEnumMapOf(): EnumMap<E, V> = EmptyEnumMap as En
  * Converts this map to an immutable [EnumMap].
  *
  * For internal enum-map implementations, optimized snapshot paths are used.
+ *
+ * Example:
+ * ```kotlin
+ * val mutable = mutableEnumMapOf(State.INIT to 0)
+ * val snapshot = mutable.toEnumMap()
+ * mutable[State.RUNNING] = 1
+ * // snapshot does not contain RUNNING
+ * ```
  */
 public fun <E : Enum<E>, V> Map<E, V>.toEnumMap(): EnumMap<E, V> {
     if (this is EnumMap<E, V> && this !is MutableEnumMap<E, V>) return this
@@ -41,7 +59,14 @@ public fun <E : Enum<E>, V> Map<E, V>.toEnumMap(): EnumMap<E, V> {
 
         is EnumEntriesBasedLargeEnumMap<*, *> -> {
             val map = this as EnumEntriesBasedLargeEnumMap<E, V>
-            createLargeEnumMap(map.keyWords.copyOf(), map.slots.copyOf(), map.universe)
+            val lastWordIndex = mapLastNonZeroWordIndex(map.keyWords)
+            if (lastWordIndex < 0) {
+                emptyEnumMapOf()
+            } else {
+                val keyWords = map.keyWords.copyOf(lastWordIndex + 1)
+                val slotSize = mapHighestOrdinalPlusOne(keyWords)
+                createLargeEnumMap(keyWords, map.slots.copyOf(slotSize), map.universe)
+            }
         }
 
         else -> {
@@ -56,6 +81,8 @@ public fun <E : Enum<E>, V> Map<E, V>.toEnumMap(): EnumMap<E, V> {
 
 /**
  * Creates an immutable [EnumMap] from [pairs].
+ *
+ * Example: `enumMapOf(State.INIT to 0, State.RUNNING to 1)`
  */
 public inline fun <reified E : Enum<E>, V> enumMapOf(vararg pairs: Pair<E, V>): EnumMap<E, V> {
     if (pairs.isEmpty()) return emptyEnumMapOf()
@@ -233,6 +260,7 @@ private object EmptyEnumMap : EnumMap<Nothing, Nothing> {
     override fun containsKey(key: Nothing): Boolean = false
     override fun containsValue(value: Nothing): Boolean = false
     override fun get(key: Nothing): Nothing? = null
+
 }
 
 internal class GenericEnumMap<E : Enum<E>, V>(private val delegate: Map<E, V>) :

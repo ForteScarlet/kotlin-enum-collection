@@ -131,6 +131,48 @@ class EnumSetTest {
     }
 
     @Test
+    fun toMutableEnumSetFromMutableCreatesIndependentCopy() {
+        val mutable = mutableEnumSetOf(SmallSetEnum.A11, SmallSetEnum.A12)
+        val copy = mutable.toMutableEnumSet()
+
+        mutable.add(SmallSetEnum.A13)
+        copy.remove(SmallSetEnum.A11)
+
+        assertEquals(setOf(SmallSetEnum.A11, SmallSetEnum.A12, SmallSetEnum.A13), mutable)
+        assertEquals(setOf(SmallSetEnum.A12), copy)
+    }
+
+    @Test
+    fun mutableCopyIsIndependent() {
+        val original = mutableEnumSetOf(SmallSetEnum.A1, SmallSetEnum.A2)
+        val copy = original.copy()
+
+        assertFalse(copy === original)
+
+        copy.add(SmallSetEnum.A3)
+        original.remove(SmallSetEnum.A1)
+
+        assertEquals(setOf(SmallSetEnum.A2), original)
+        assertEquals(setOf(SmallSetEnum.A1, SmallSetEnum.A2, SmallSetEnum.A3), copy)
+    }
+
+    @Test
+    fun mutableLargeCopyIsDeep() {
+        val original = mutableEnumSetOf<LargeSetEnum>()
+        original.add(LargeSetEnum.C00)
+        original.add(LargeSetEnum.C95)
+
+        val copy = original.copy()
+        copy.remove(LargeSetEnum.C95)
+        copy.add(LargeSetEnum.C01)
+
+        assertTrue(original.contains(LargeSetEnum.C95))
+        assertFalse(original.contains(LargeSetEnum.C01))
+        assertEquals(setOf(LargeSetEnum.C00, LargeSetEnum.C95), original)
+        assertEquals(setOf(LargeSetEnum.C00, LargeSetEnum.C01), copy)
+    }
+
+    @Test
     fun plainSetConversionCreatesIndependentMutableCopy() {
         val plain = linkedSetOf(SmallSetEnum.A8, SmallSetEnum.A9)
         val mutable = plain.toMutableEnumSet()

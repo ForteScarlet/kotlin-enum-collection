@@ -1,20 +1,14 @@
 plugins {
-    id("enumcollection.kmp")
+    id("enumcollection.jvm")
 }
 
 kotlin {
-    sourceSets {
-        val commonMain by getting {
-            dependencies {
-                implementation(project(":kotlin-enum-collection-annotations"))
-            }
-        }
-        val jvmMain by getting {
-            dependencies {
-                implementation(libs.ksp.symbol.processing.api)
-                api(project(":kotlin-enum-collection-annotations"))
-                api(libs.codegentle.ksp)
-            }
-        }
-    }
+    jvmToolchain(11)
 }
+
+dependencies {
+    implementation(libs.ksp.symbol.processing.api)
+    implementation(project(":kotlin-enum-collection-annotations"))
+    api(libs.codegentle.ksp)
+}
+

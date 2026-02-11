@@ -7,15 +7,29 @@ import kotlin.enums.enumEntries
  * A mutable [EnumSet].
  */
 public interface MutableEnumSet<E : Enum<E>> : EnumSet<E>, MutableSet<E> {
-    // TODO override fun copy(): MutableEnumSet<E>
+    /**
+     * Returns an independent mutable copy of this set.
+     *
+     * Example:
+     * ```kotlin
+     * val original = mutableEnumSetOf(Role.USER)
+     * val copy = original.copy()
+     * copy.add(Role.ADMIN)
+     * ```
+     */
+    public fun copy(): MutableEnumSet<E>
 }
 
 /**
  * Converts this set to a mutable [MutableEnumSet].
  *
  * Similar to Kotlin's `toMutableSet`, this creates an independent mutable copy.
+ *
+ * Example: `val mutable = enumSetOf(Role.USER).toMutableEnumSet()`
  */
 public fun <E : Enum<E>> Set<E>.toMutableEnumSet(): MutableEnumSet<E> {
+    if (this is MutableEnumSet<E>) return copy()
+
     @Suppress("UNCHECKED_CAST")
     return when (this) {
         is EnumEntriesBasedI32EnumSet<*> -> {
@@ -39,6 +53,8 @@ public fun <E : Enum<E>> Set<E>.toMutableEnumSet(): MutableEnumSet<E> {
 
 /**
  * Creates a mutable [MutableEnumSet] containing [elements].
+ *
+ * Example: `mutableEnumSetOf(Role.USER, Role.ADMIN)`
  */
 public inline fun <reified E : Enum<E>> mutableEnumSetOf(vararg elements: E): MutableEnumSet<E> {
     val entries = enumEntries<E>()
@@ -135,6 +151,8 @@ private class GenericMutableEnumSet<E : Enum<E>>(private val delegate: MutableSe
         if (result.isEmpty()) return emptyEnumSetOf()
         return GenericEnumSet(result)
     }
+
+    override fun copy(): MutableEnumSet<E> = GenericMutableEnumSet(delegate.toMutableSet())
 
     override fun equals(other: Any?): Boolean = delegate == other
 
@@ -262,6 +280,8 @@ private class MutableI32EnumSet<E : Enum<E>>(
 
         return createI32EnumSet(currentBits and removeMask.inv(), values)
     }
+
+    override fun copy(): MutableEnumSet<E> = MutableI32EnumSet(bs, values)
 
     override fun isEmpty(): Boolean = bs == 0
 
@@ -551,6 +571,8 @@ private class MutableI64EnumSet<E : Enum<E>>(
 
         return createI64EnumSet(currentBits and removeMask.inv(), values)
     }
+
+    override fun copy(): MutableEnumSet<E> = MutableI64EnumSet(bs, values)
 
     override fun isEmpty(): Boolean = bs == 0L
 
@@ -892,6 +914,8 @@ private class MutableLargeEnumSet<E : Enum<E>>(
         if (!removeMaskExists) return createLargeEnumSet(bs.copyOf(), values)
         return createLargeEnumSet(trimByLastNonZero(resultWords, lastNonZeroIndex(resultWords)), values)
     }
+
+    override fun copy(): MutableEnumSet<E> = MutableLargeEnumSet(bs.copyOf(), values)
 
     override fun isEmpty(): Boolean = bs.isEmpty()
 

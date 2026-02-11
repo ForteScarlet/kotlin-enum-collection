@@ -163,6 +163,51 @@ class EnumMapTest {
     }
 
     @Test
+    fun toMutableEnumMapFromMutableCreatesIndependentCopy() {
+        val mutable = mutableEnumMapOf(SmallMapEnum.A9 to 9, SmallMapEnum.A10 to 10)
+        val copy = mutable.toMutableEnumMap()
+
+        mutable[SmallMapEnum.A11] = 11
+        copy.remove(SmallMapEnum.A9)
+
+        assertTrue(mutable.containsKey(SmallMapEnum.A11))
+        assertFalse(copy.containsKey(SmallMapEnum.A9))
+        assertEquals(3, mutable.size)
+        assertEquals(1, copy.size)
+    }
+
+    @Test
+    fun mutableCopyIsIndependent() {
+        val original = mutableEnumMapOf(SmallMapEnum.A1 to 1, SmallMapEnum.A2 to 2)
+        val copy = original.copy()
+
+        assertFalse(copy === original)
+
+        copy[SmallMapEnum.A3] = 3
+        original.remove(SmallMapEnum.A1)
+
+        assertFalse(original.containsKey(SmallMapEnum.A3))
+        assertEquals(1, original.size)
+        assertEquals(3, copy.size)
+    }
+
+    @Test
+    fun mutableLargeCopyIsDeep() {
+        val original = mutableEnumMapOf<LargeMapEnum, Int>()
+        original[LargeMapEnum.C00] = 0
+        original[LargeMapEnum.C95] = 95
+
+        val copy = original.copy()
+        copy.remove(LargeMapEnum.C95)
+        copy[LargeMapEnum.C01] = 1
+
+        assertTrue(original.containsKey(LargeMapEnum.C95))
+        assertFalse(original.containsKey(LargeMapEnum.C01))
+        assertEquals(2, original.size)
+        assertEquals(2, copy.size)
+    }
+
+    @Test
     fun plainMapConversionCreatesIndependentMutableCopy() {
         val plain = linkedMapOf(SmallMapEnum.A6 to 6, SmallMapEnum.A7 to 7)
         val mutable = plain.toMutableEnumMap()

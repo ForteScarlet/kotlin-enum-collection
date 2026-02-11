@@ -7,35 +7,57 @@ import kotlin.enums.enumEntries
  * A set specialized for enum elements.
  *
  * Implementations use ordinal-based bit storage to minimize memory footprint and branch cost.
+ *
+ * Example:
+ * ```kotlin
+ * enum class Role { USER, ADMIN, GUEST }
+ *
+ * val set = enumSetOf(Role.USER, Role.ADMIN)
+ * val hasUser = set.contains(Role.USER) // true
+ * ```
  */
 public interface EnumSet<E : Enum<E>> : Set<E> {
     /**
      * Returns `true` when this set contains at least one element from [elements].
+     *
+     * Example: `enumSetOf(Role.USER).containsAny(listOf(Role.ADMIN, Role.USER)) == true`
      */
     public fun containsAny(elements: Collection<E>): Boolean
 
     /**
      * Returns a new set containing elements that are in both this set and [other].
+     *
+     * Example: `enumSetOf(Role.USER, Role.ADMIN).intersect(setOf(Role.ADMIN))`
      */
     public fun intersect(other: Set<E>): Set<E>
 
     /**
      * Returns a new set containing elements that are in this set or [other].
+     *
+     * Example: `enumSetOf(Role.USER).union(setOf(Role.ADMIN))`
      */
     public fun union(other: Set<E>): Set<E>
 
     /**
      * Returns a new set containing elements in this set but not in [other].
+     *
+     * Example: `enumSetOf(Role.USER, Role.ADMIN).difference(setOf(Role.USER))`
      */
     public fun difference(other: Set<E>): Set<E>
-
-    // TODO public fun copy(): EnumSet<E>
 }
 
 /**
  * Converts this set to an immutable [EnumSet].
  *
  * For internal enum-set implementations, this method uses zero/low-copy fast paths.
+ *
+ * Example:
+ * ```kotlin
+ * val mutable = mutableEnumSetOf(Role.USER)
+ * val snapshot = mutable.toEnumSet()
+ * mutable.add(Role.ADMIN)
+ * // snapshot still only contains USER
+ * ```
  */
 public fun <E : Enum<E>> Set<E>.toEnumSet(): EnumSet<E> {
     if (this is EnumSet<E> && this !is MutableEnumSet<E>) return this
@@ -69,6 +91,8 @@ public fun <E : Enum<E>> Set<E>.toEnumSet(): EnumSet<E> {
 
 /**
  * Creates an [EnumSet] that contains all constants of enum type [E].
+ *
+ * Example: `fullEnumSetOf<Role>()`
  */
 public inline fun <reified E : Enum<E>> fullEnumSetOf(): EnumSet<E> {
     val entries = enumEntries<E>()
@@ -99,12 +123,16 @@ public inline fun <reified E : Enum<E>> fullEnumSetOf(): EnumSet<E> {
 
 /**
  * Returns an immutable empty [EnumSet].
+ *
+ * Example: `emptyEnumSetOf<Role>().isEmpty()`
  */
 @Suppress("UNCHECKED_CAST")
 public fun <E : Enum<E>> emptyEnumSetOf(): EnumSet<E> = EmptyEnumSet as EnumSet<E>
 
 /**
  * Creates an immutable [EnumSet] containing [elements].
+ *
+ * Example: `enumSetOf(Role.USER, Role.ADMIN)`
  */
 public inline fun <reified E : Enum<E>> enumSetOf(vararg elements: E): EnumSet<E> {
     val entries = enumEntries<E>()
@@ -378,7 +406,9 @@ private class I32EnumSet<E : Enum<E>>(
 
         if (other is EnumEntriesBasedI32EnumSet<*>) {
             if (!sameUniverse(values, other.values)) return emptyEnumSetOf()
-            return createI32EnumSet(currentBits and other.bs, values)
+            val intersectBits = currentBits and other.bs
+            if (intersectBits == currentBits) return this
+            return createI32EnumSet(intersectBits, values)
         }
 
         var intersectBits = 0
@@ -402,6 +432,7 @@ private class I32EnumSet<E : Enum<E>>(
             }
         }
 
+        if (intersectBits == currentBits) return this
         return createI32EnumSet(intersectBits, values)
     }
 
@@ -412,7 +443,9 @@ private class I32EnumSet<E : Enum<E>>(
 
         if (other is EnumEntriesBasedI32EnumSet<*>) {
             if (!sameUniverse(values, other.values)) return this
-            return createI32EnumSet(currentBits or other.bs, values)
+            val mergedBits = currentBits or other.bs
+            if (mergedBits == currentBits) return this
+            return createI32EnumSet(mergedBits, values)
         }
 
         var mergedBits = currentBits
@@ -423,6 +456,7 @@ private class I32EnumSet<E : Enum<E>>(
             }
         }
 
+        if (mergedBits == currentBits) return this
         return createI32EnumSet(mergedBits, values)
     }
 
@@ -433,7 +467,9 @@ private class I32EnumSet<E : Enum<E>>(
 
         if (other is EnumEntriesBasedI32EnumSet<*>) {
             if (!sameUniverse(values, other.values)) return this
-            return createI32EnumSet(currentBits and other.bs.inv(), values)
+            val differenceBits = currentBits and other.bs.inv()
+            if (differenceBits == currentBits) return this
+            return createI32EnumSet(differenceBits, values)
         }
 
         var removeMask = 0
@@ -444,7 +480,10 @@ private class I32EnumSet<E : Enum<E>>(
             }
         }
 
-        return createI32EnumSet(currentBits and removeMask.inv(), values)
+        if (removeMask == 0) return this
+        val differenceBits = currentBits and removeMask.inv()
+        if (differenceBits == currentBits) return this
+        return createI32EnumSet(differenceBits, values)
     }
 
     override fun isEmpty(): Boolean = bs == 0
@@ -551,7 +590,9 @@ private class I64EnumSet<E : Enum<E>>(
 
         if (other is EnumEntriesBasedI64EnumSet<*>) {
             if (!sameUniverse(values, other.values)) return emptyEnumSetOf()
-            return createI64EnumSet(currentBits and other.bs, values)
+            val intersectBits = currentBits and other.bs
+            if (intersectBits == currentBits) return this
+            return createI64EnumSet(intersectBits, values)
         }
 
         var intersectBits = 0L
@@ -575,6 +616,7 @@ private class I64EnumSet<E : Enum<E>>(
             }
         }
 
+        if (intersectBits == currentBits) return this
         return createI64EnumSet(intersectBits, values)
     }
 
@@ -585,7 +627,9 @@ private class I64EnumSet<E : Enum<E>>(
 
         if (other is EnumEntriesBasedI64EnumSet<*>) {
             if (!sameUniverse(values, other.values)) return this
-            return createI64EnumSet(currentBits or other.bs, values)
+            val mergedBits = currentBits or other.bs
+            if (mergedBits == currentBits) return this
+            return createI64EnumSet(mergedBits, values)
         }
 
         var mergedBits = currentBits
@@ -596,6 +640,7 @@ private class I64EnumSet<E : Enum<E>>(
             }
         }
 
+        if (mergedBits == currentBits) return this
         return createI64EnumSet(mergedBits, values)
     }
 
@@ -606,7 +651,9 @@ private class I64EnumSet<E : Enum<E>>(
 
         if (other is EnumEntriesBasedI64EnumSet<*>) {
             if (!sameUniverse(values, other.values)) return this
-            return createI64EnumSet(currentBits and other.bs.inv(), values)
+            val differenceBits = currentBits and other.bs.inv()
+            if (differenceBits == currentBits) return this
+            return createI64EnumSet(differenceBits, values)
         }
 
         var removeMask = 0L
@@ -617,7 +664,10 @@ private class I64EnumSet<E : Enum<E>>(
             }
         }
 
-        return createI64EnumSet(currentBits and removeMask.inv(), values)
+        if (removeMask == 0L) return this
+        val differenceBits = currentBits and removeMask.inv()
+        if (differenceBits == currentBits) return this
+        return createI64EnumSet(differenceBits, values)
     }
 
     override fun isEmpty(): Boolean = bs == 0L
@@ -781,28 +831,63 @@ private class LargeEnumSet<E : Enum<E>>(
 
         if (other is EnumEntriesBasedLargeEnumSet<*>) {
             if (!sameUniverse(values, other.values)) return this
+            val currentWords = bs
             val otherWords = other.bs
-            val maxSize = maxOf(bs.size, otherWords.size)
-            val resultWords = LongArray(maxSize)
-            for (wordIndex in 0 until maxSize) {
-                val leftWord = if (wordIndex < bs.size) bs[wordIndex] else 0L
-                val rightWord = if (wordIndex < otherWords.size) otherWords[wordIndex] else 0L
-                resultWords[wordIndex] = leftWord or rightWord
+            if (otherWords.size <= currentWords.size) {
+                val resultWords = currentWords.copyOf()
+                var changed = false
+                for (wordIndex in otherWords.indices) {
+                    val oldWord = resultWords[wordIndex]
+                    val mergedWord = oldWord or otherWords[wordIndex]
+                    if (mergedWord != oldWord) {
+                        resultWords[wordIndex] = mergedWord
+                        changed = true
+                    }
+                }
+                if (!changed) return this
+                return createLargeEnumSet(resultWords, values)
             }
+
+            val resultWords = otherWords.copyOf()
+            var changed = false
+            for (wordIndex in currentWords.indices) {
+                val oldWord = resultWords[wordIndex]
+                val mergedWord = oldWord or currentWords[wordIndex]
+                if (mergedWord != oldWord) {
+                    resultWords[wordIndex] = mergedWord
+                    changed = true
+                }
+            }
+            var tailHasAdditionalBits = false
+            for (wordIndex in currentWords.size until resultWords.size) {
+                if (resultWords[wordIndex] != 0L) {
+                    tailHasAdditionalBits = true
+                    break
+                }
+            }
+            if (!changed && !tailHasAdditionalBits) return this
             return createLargeEnumSet(resultWords, values)
         }
 
         var resultWords = bs.copyOf()
+        var changed = false
         for (element in other) {
             val ordinal = ordinalInUniverseOrMinusOne(element, values)
             if (ordinal < 0) continue
             val wordIndex = ordinal ushr 6
             if (wordIndex >= resultWords.size) {
                 resultWords = resultWords.copyOf(wordIndex + 1)
+                changed = true
             }
-            resultWords[wordIndex] = resultWords[wordIndex] or (1L shl (ordinal and 63))
+            val oldWord = resultWords[wordIndex]
+            val newWord = oldWord or (1L shl (ordinal and 63))
+            if (newWord != oldWord) {
+                resultWords[wordIndex] = newWord
+                changed = true
+            }
         }
 
+        if (!changed) return this
         return createLargeEnumSet(resultWords, values)
     }
 
@@ -815,10 +900,16 @@ private class LargeEnumSet<E : Enum<E>>(
             val otherWords = other.bs
             val resultWords = bs.copyOf()
             val minSize = minOf(resultWords.size, otherWords.size)
+            var changed = false
             var lastNonZeroWordIndex = -1
             var wordIndex = 0
             while (wordIndex < minSize) {
-                resultWords[wordIndex] = resultWords[wordIndex] and otherWords[wordIndex].inv()
+                val oldWord = resultWords[wordIndex]
+                val newWord = oldWord and otherWords[wordIndex].inv()
+                if (newWord != oldWord) {
+                    resultWords[wordIndex] = newWord
+                    changed = true
+                }
                 if (resultWords[wordIndex] != 0L) lastNonZeroWordIndex = wordIndex
                 wordIndex++
             }
@@ -826,6 +917,7 @@ private class LargeEnumSet<E : Enum<E>>(
                 if (resultWords[wordIndex] != 0L) lastNonZeroWordIndex = wordIndex
                 wordIndex++
             }
+            if (!changed) return this
             return createLargeEnumSet(trimByLastNonZero(resultWords, lastNonZeroWordIndex), values)
         }
 
