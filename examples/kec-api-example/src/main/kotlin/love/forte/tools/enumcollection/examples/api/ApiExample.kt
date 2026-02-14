@@ -1,7 +1,5 @@
 package love.forte.tools.enumcollection.examples.api
 
-import love.forte.tools.enumcollection.api.EnumMap
-import love.forte.tools.enumcollection.api.EnumSet
 import love.forte.tools.enumcollection.api.enumMapOf
 import love.forte.tools.enumcollection.api.enumSetOf
 import love.forte.tools.enumcollection.api.toEnumMap
@@ -15,27 +13,33 @@ private enum class Role {
     GUEST,
 }
 
-public fun main(): Unit {
-    val set: EnumSet<Role> = enumSetOf(Role.USER, Role.ADMIN)
-    check(set.contains(Role.USER))
-    check(!set.contains(Role.GUEST))
+public fun main() {
+    val base = enumSetOf(Role.USER, Role.ADMIN)
+    val other = enumSetOf(Role.ADMIN, Role.GUEST)
 
-    val mutable = set.toMutableEnumSet()
-    mutable.add(Role.GUEST)
+    println("=== EnumSet (API) ===")
+    println("base = $base")
+    println("containsAny([GUEST, USER]) = ${base.containsAny(listOf(Role.GUEST, Role.USER))}")
+    println("intersect = ${base.intersect(other)}")
+    println("union = ${base.union(other)}")
+    println("difference = ${base.difference(other)}")
 
+    val mutable = base.toMutableEnumSet()
     val snapshot = mutable.toEnumSet()
-    check(snapshot.contains(Role.GUEST))
+    mutable.add(Role.GUEST)
+    println("snapshot (before add) = $snapshot")
+    println("mutable (after add GUEST) = $mutable")
+    println("snapshot (still) = $snapshot")
 
-    println("EnumSet example: $set -> mutable=$mutable -> snapshot=$snapshot")
+    println()
+    println("=== EnumMap (API) ===")
+    val baseMap = enumMapOf(Role.USER to 1, Role.ADMIN to 2)
+    println("baseMap = $baseMap")
 
-    val map: EnumMap<Role, Int> = enumMapOf(Role.USER to 1, Role.ADMIN to 2)
-    check(map[Role.ADMIN] == 2)
-
-    val mutableMap = map.toMutableEnumMap()
+    val mutableMap = baseMap.toMutableEnumMap()
+    val mapSnapshot = mutableMap.toEnumMap()
     mutableMap[Role.GUEST] = 3
-
-    val immutableMap = mutableMap.toEnumMap()
-    check(immutableMap[Role.GUEST] == 3)
-
-    println("EnumMap example: $map -> mutable=$mutableMap -> snapshot=$immutableMap")
+    println("mapSnapshot (before put) = $mapSnapshot")
+    println("mutableMap (after put GUEST) = $mutableMap")
+    println("mapSnapshot (still) = $mapSnapshot")
 }

@@ -6,9 +6,8 @@ import love.forte.tools.enumcollection.annotations.Visibility
 
 @EnumSet(visibility = Visibility.PUBLIC)
 @EnumMap(visibility = Visibility.PUBLIC)
-public enum class Permission {
+public enum class Permission2 {
     READ,
     WRITE,
     EXECUTE,
 }
-
