@@ -59,7 +59,7 @@ public fun <E : Enum<E>, V> Map<E, V>.toEnumMap(): EnumMap<E, V> {
 
         is EnumEntriesBasedLargeEnumMap<*, *> -> {
             val map = this as EnumEntriesBasedLargeEnumMap<E, V>
-            val lastWordIndex = mapLastNonZeroWordIndex(map.keyWords)
+            val lastWordIndex = lastNonZeroIndex(map.keyWords)
             if (lastWordIndex < 0) {
                 emptyEnumMapOf()
             } else {
@@ -179,21 +179,13 @@ internal fun <E : Enum<E>, V> createLargeEnumMap(
     slots: Array<Any?>,
     universe: EnumEntries<E>
 ): EnumMap<E, V> {
-    val lastWordIndex = mapLastNonZeroWordIndex(keyWords)
+    val lastWordIndex = lastNonZeroIndex(keyWords)
     if (lastWordIndex < 0) return emptyEnumMapOf()
 
-    val trimmedWords = if (lastWordIndex == keyWords.lastIndex) keyWords else keyWords.copyOf(lastWordIndex + 1)
+    val trimmedWords = trimByLastNonZero(keyWords, lastWordIndex)
     val requiredSlotSize = mapHighestOrdinalPlusOne(trimmedWords)
     val normalizedSlots = if (slots.size == requiredSlotSize) slots else slots.copyOf(requiredSlotSize)
     return LargeEnumMap(universe, trimmedWords, normalizedSlots)
-}
-
-internal fun mapLastNonZeroWordIndex(words: LongArray): Int {
-    var index = words.size - 1
-    while (index >= 0 && words[index] == 0L) {
-        index--
-    }
-    return index
 }
 
 internal fun mapHighestOrdinalPlusOne(words: LongArray): Int {
@@ -213,14 +205,6 @@ internal fun mapHighestOrdinalPlusOne(bits: Int): Int {
 internal fun mapHighestOrdinalPlusOne(bits: Long): Int {
     if (bits == 0L) return 0
     return Long.SIZE_BITS - bits.countLeadingZeroBits()
-}
-
-internal fun mapBitCountOfWords(words: LongArray): Int {
-    var count = 0
-    for (word in words) {
-        count += word.countOneBits()
-    }
-    return count
 }
 
 internal interface EnumEntriesBasedEnumMap<E : Enum<E>, V> : EnumMap<E, V> {
@@ -359,45 +343,10 @@ private class I32EnumMap<E : Enum<E>, V>(
         override fun hashCode(): Int = key.hashCode() xor (value?.hashCode() ?: 0)
     }
 
-    override fun equals(other: Any?): Boolean {
-        if (this === other) return true
-        if (other !is Map<*, *>) return false
-        if (size != other.size) return false
+    override fun equals(other: Any?): Boolean = this === other ||
+            enumMapEqualsByKeyBits(universe, keyBits, slots, other)
 
-        if (other is EnumEntriesBasedI32EnumMap<*, *>) {
-            if (!sameUniverse(universe, other.universe)) {
-                return isEmpty() && other.isEmpty()
-            }
-            if (keyBits != other.keyBits) return false
-
-            var remaining = keyBits
-            while (remaining != 0) {
-                val ordinal = remaining.countTrailingZeroBits()
-                if (slots[ordinal] != other.slots[ordinal]) return false
-                remaining = remaining and (remaining - 1)
-            }
-            return true
-        }
-
-        for ((key, value) in entries) {
-            val otherValue = other[key]
-            if (otherValue != value || (value == null && !other.containsKey(key))) return false
-        }
-        return true
-    }
-
-    override fun hashCode(): Int {
-        var hash = 0
-        var remaining = keyBits
-        while (remaining != 0) {
-            val ordinal = remaining.countTrailingZeroBits()
-            val keyHash = universe[ordinal].hashCode()
-            val valueHash = slots[ordinal]?.hashCode() ?: 0
-            hash += keyHash xor valueHash
-            remaining = remaining and (remaining - 1)
-        }
-        return hash
-    }
+    override fun hashCode(): Int = enumMapHashCodeByKeyBits(universe, keyBits, slots)
 }
 
 private class I64EnumMap<E : Enum<E>, V>(
@@ -495,45 +444,10 @@ private class I64EnumMap<E : Enum<E>, V>(
         override fun hashCode(): Int = key.hashCode() xor (value?.hashCode() ?: 0)
     }
 
-    override fun equals(other: Any?): Boolean {
-        if (this === other) return true
-        if (other !is Map<*, *>) return false
-        if (size != other.size) return false
+    override fun equals(other: Any?): Boolean = this === other ||
+            enumMapEqualsByKeyBits(universe, keyBits, slots, other)
 
-        if (other is EnumEntriesBasedI64EnumMap<*, *>) {
-            if (!sameUniverse(universe, other.universe)) {
-                return isEmpty() && other.isEmpty()
-            }
-            if (keyBits != other.keyBits) return false
-
-            var remaining = keyBits
-            while (remaining != 0L) {
-                val ordinal = remaining.countTrailingZeroBits()
-                if (slots[ordinal] != other.slots[ordinal]) return false
-                remaining = remaining and (remaining - 1)
-            }
-            return true
-        }
-
-        for ((key, value) in entries) {
-            val otherValue = other[key]
-            if (otherValue != value || (value == null && !other.containsKey(key))) return false
-        }
-        return true
-    }
-
-    override fun hashCode(): Int {
-        var hash = 0
-        var remaining = keyBits
-        while (remaining != 0L) {
-            val ordinal = remaining.countTrailingZeroBits()
-            val keyHash = universe[ordinal].hashCode()
-            val valueHash = slots[ordinal]?.hashCode() ?: 0
-            hash += keyHash xor valueHash
-            remaining = remaining and (remaining - 1)
-        }
-        return hash
-    }
+    override fun hashCode(): Int = enumMapHashCodeByKeyBits(universe, keyBits, slots)
 }
 
 private class LargeEnumMap<E : Enum<E>, V>(
@@ -542,7 +456,7 @@ private class LargeEnumMap<E : Enum<E>, V>(
     override val slots: Array<Any?>
 ) : AbstractMap<E, V>(), EnumEntriesBasedLargeEnumMap<E, V> {
 
-    private val mapSize: Int = mapBitCountOfWords(keyWords)
+    private val mapSize: Int = bitCountOf(keyWords)
 
     private fun keyOrdinalOrMinusOne(key: E): Int {
         val ordinal = key.ordinal
@@ -647,64 +561,8 @@ private class LargeEnumMap<E : Enum<E>, V>(
         override fun hashCode(): Int = key.hashCode() xor (value?.hashCode() ?: 0)
     }
 
-    override fun equals(other: Any?): Boolean {
-        if (this === other) return true
-        if (other !is Map<*, *>) return false
-        if (size != other.size) return false
+    override fun equals(other: Any?): Boolean = this === other ||
+            enumMapEqualsByKeyWords(universe, keyWords, slots, mapSize, other)
 
-        if (other is EnumEntriesBasedLargeEnumMap<*, *>) {
-            if (!sameUniverse(universe, other.universe)) {
-                return isEmpty() && other.isEmpty()
-            }
-
-            val leftWords = keyWords
-            val rightWords = other.keyWords
-            val minSize = minOf(leftWords.size, rightWords.size)
-            for (wordIndex in 0 until minSize) {
-                if (leftWords[wordIndex] != rightWords[wordIndex]) return false
-            }
-            for (wordIndex in minSize until leftWords.size) {
-                if (leftWords[wordIndex] != 0L) return false
-            }
-            for (wordIndex in minSize until rightWords.size) {
-                if (rightWords[wordIndex] != 0L) return false
-            }
-
-            for (wordIndex in leftWords.indices) {
-                var word = leftWords[wordIndex]
-                while (word != 0L) {
-                    val bit = word.countTrailingZeroBits()
-                    val ordinal = (wordIndex shl 6) + bit
-                    val leftValue = if (ordinal < slots.size) slots[ordinal] else null
-                    val rightValue = if (ordinal < other.slots.size) other.slots[ordinal] else null
-                    if (leftValue != rightValue) return false
-                    word = word and (word - 1)
-                }
-            }
-
-            return true
-        }
-
-        for ((key, value) in entries) {
-            val otherValue = other[key]
-            if (otherValue != value || (value == null && !other.containsKey(key))) return false
-        }
-        return true
-    }
-
-    override fun hashCode(): Int {
-        var hash = 0
-        for (wordIndex in keyWords.indices) {
-            var word = keyWords[wordIndex]
-            while (word != 0L) {
-                val bit = word.countTrailingZeroBits()
-                val ordinal = (wordIndex shl 6) + bit
-                val keyHash = universe[ordinal].hashCode()
-                val valueHash = if (ordinal < slots.size) (slots[ordinal]?.hashCode() ?: 0) else 0
-                hash += keyHash xor valueHash
-                word = word and (word - 1)
-            }
-        }
-        return hash
-    }
+    override fun hashCode(): Int = enumMapHashCodeByKeyWords(universe, keyWords, slots)
 }

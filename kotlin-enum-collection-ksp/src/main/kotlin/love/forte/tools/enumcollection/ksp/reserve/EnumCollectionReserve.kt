@@ -6,6 +6,8 @@ import com.google.devtools.ksp.processing.SymbolProcessorEnvironment
 import com.google.devtools.ksp.symbol.KSFile
 import love.forte.codegentle.kotlin.KotlinFile
 import love.forte.codegentle.kotlin.ksp.writeTo
+import love.forte.codegentle.kotlin.spec.KotlinFunctionSpec
+import love.forte.codegentle.kotlin.spec.KotlinPropertySpec
 import love.forte.codegentle.kotlin.spec.KotlinTypeSpec
 import love.forte.tools.enumcollection.ksp.EnumDetail
 import love.forte.tools.enumcollection.ksp.configuration.InheritanceMode
@@ -44,15 +46,17 @@ internal abstract class EnumCollectionReserve {
         val codegen = environment.codeGenerator
 
         val apiInterfaceAvailable = resolver.getClassDeclarationByName(apiInheritanceTypeQualifiedName) != null
-        val type = generateType(apiInterfaceAvailable, configuration.inheritanceMode)
+        val fileSpec = generateFileSpec(apiInterfaceAvailable, configuration.inheritanceMode)
 
         val kotlinFile = KotlinFile(
             packageNamePaths = enumDetail.packageName,
-            type = type,
+            types = fileSpec.types,
         ) {
-            name(type.name)
+            name(targetName)
             val time = DATETIME_FORMATTER.format(Instant.now())
             addFileComment("Auto-Generated at $time (UTC). Do not modify!")
+            addFunctions(fileSpec.functions)
+            addProperties(fileSpec.properties)
         }
 
         kotlinFile.writeTo(
@@ -62,6 +66,15 @@ internal abstract class EnumCollectionReserve {
         )
     }
 
-    protected abstract fun generateType(inheritanceAvailable: Boolean, inheritanceMode: InheritanceMode): KotlinTypeSpec
+    protected abstract fun generateFileSpec(inheritanceAvailable: Boolean, inheritanceMode: InheritanceMode): FileSpec
 
 }
+
+/**
+ * Represents all top-level declarations to be emitted into the generated Kotlin file.
+ */
+internal data class FileSpec(
+    val types: List<KotlinTypeSpec>,
+    val functions: List<KotlinFunctionSpec> = emptyList(),
+    val properties: List<KotlinPropertySpec> = emptyList(),
+)

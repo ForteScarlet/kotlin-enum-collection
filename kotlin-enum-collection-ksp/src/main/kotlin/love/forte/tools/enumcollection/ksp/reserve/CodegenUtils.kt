@@ -10,6 +10,9 @@ import love.forte.tools.enumcollection.ksp.configuration.InheritanceMode
 internal val API_ENUM_SET: ClassName = ClassName("love.forte.tools.enumcollection.api", "EnumSet")
 internal val API_ENUM_MAP: ClassName = ClassName("love.forte.tools.enumcollection.api", "EnumMap")
 
+internal val API_MUTABLE_ENUM_SET: ClassName = ClassName("love.forte.tools.enumcollection.api", "MutableEnumSet")
+internal val API_MUTABLE_ENUM_MAP: ClassName = ClassName("love.forte.tools.enumcollection.api", "MutableEnumMap")
+
 internal fun KotlinModifierCollector<*>.applyVisibility(visibility: String) {
     when (visibility.uppercase()) {
         "PUBLIC" -> addModifier(KotlinModifier.PUBLIC)
