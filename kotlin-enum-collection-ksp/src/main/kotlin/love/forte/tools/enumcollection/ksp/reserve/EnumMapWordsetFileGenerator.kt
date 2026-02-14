@@ -75,18 +75,11 @@ internal object EnumMapWordsetFileGenerator {
             addMember(format = "\"UNCHECKED_CAST\"")
         }
 
-        val privateWordsetBasedInterface = KotlinSimpleTypeSpec(KotlinTypeSpec.Kind.INTERFACE, "WordsetBased") {
-            addModifier(KotlinModifier.PRIVATE)
-            addProperty(KotlinPropertySpec("keyWords", wordsTypeRef))
-            addProperty(KotlinPropertySpec("slots", slotsTypeRef))
-        }
-        val wordsetBasedType = ClassName(packageName, "WordsetBased")
-
-        val immutableInterface = KotlinSimpleTypeSpec(KotlinTypeSpec.Kind.INTERFACE, immutableInterfaceName) {
-            applyVisibility(visibility)
-            addDoc("An enum-specialized map optimized for [$enumRef] keys.")
-            addTypeVariable(valueTypeVar)
-            addSuperinterface(superImmutable)
+	    	val immutableInterface = KotlinSimpleTypeSpec(KotlinTypeSpec.Kind.INTERFACE, immutableInterfaceName) {
+	    	    applyVisibility(visibility)
+	    	    addDoc("An enum-specialized map optimized for [$enumRef] keys.")
+	    	    addTypeVariable(valueTypeVar)
+	    	    addSuperinterface(superImmutable)
         }
 
         val mutableInterface = KotlinSimpleTypeSpec(KotlinTypeSpec.Kind.INTERFACE, mutableInterfaceName) {
@@ -119,7 +112,7 @@ internal object EnumMapWordsetFileGenerator {
             addModifier(KotlinModifier.PRIVATE)
             addParameter(KotlinValueParameterSpec("words", wordsTypeRef))
             addCode(
-                CodeValue {
+	    	        CodeValue {
                     addStatement("var index = words.size - 1")
                     beginControlFlow("while (index >= 0 && words[index] == 0L)")
                     addStatement("index--")
@@ -296,9 +289,13 @@ internal object EnumMapWordsetFileGenerator {
                     addStatement("return from as $immutableInterfaceName<V>")
                     endControlFlow()
 
-                    beginControlFlow("if (from is WordsetBased)")
-                    addStatement("return createEnumMapCopy(from.keyWords, from.slots)")
-                    endControlFlow()
+	    	            beginControlFlow("if (from is $implName<*>)")
+	    	            addStatement("return createEnumMapCopy(from.keyWords, from.slots)")
+	    	            endControlFlow()
+
+	    	            beginControlFlow("if (from is $mutableImplName<*>)")
+	    	            addStatement("return createEnumMapCopy(from.keyWords, from.slots)")
+	    	            endControlFlow()
 
                     addStatement("if (from.isEmpty()) return emptyEnumMap()")
                     addStatement("var words = LongArray(0)")
@@ -337,7 +334,7 @@ internal object EnumMapWordsetFileGenerator {
             )
             addDoc("Creates a mutable map containing [pairs].")
             addCode(
-                CodeValue {
+	    	        CodeValue {
                     addStatement("val words = LongArray($wordCapacity)")
                     addStatement("val slots = arrayOfNulls<Any?>($enumSize)")
                     addStatement("var mapSize = 0")
@@ -368,11 +365,17 @@ internal object EnumMapWordsetFileGenerator {
                     addStatement("return (from as $mutableInterfaceName<V>).copy()")
                     endControlFlow()
 
-                    beginControlFlow("if (from is WordsetBased)")
-                    addStatement(
-                        "return $mutableImplName(from.keyWords.copyOf($wordCapacity), from.slots.copyOf($enumSize), bitCountOfWords(from.keyWords))"
-                    )
-                    endControlFlow()
+	    	            beginControlFlow("if (from is $implName<*>)")
+	    	            addStatement(
+	    	                "return $mutableImplName(from.keyWords.copyOf($wordCapacity), from.slots.copyOf($enumSize), bitCountOfWords(from.keyWords))"
+	    	            )
+	    	            endControlFlow()
+
+	    	            beginControlFlow("if (from is $mutableImplName<*>)")
+	    	            addStatement(
+	    	                "return $mutableImplName(from.keyWords.copyOf($wordCapacity), from.slots.copyOf($enumSize), bitCountOfWords(from.keyWords))"
+	    	            )
+	    	            endControlFlow()
 
                     addStatement("val words = LongArray($wordCapacity)")
                     addStatement("val slots = arrayOfNulls<Any?>($enumSize)")
@@ -393,7 +396,7 @@ internal object EnumMapWordsetFileGenerator {
             )
         }
 
-        val immutableImpl = KotlinSimpleTypeSpec(KotlinTypeSpec.Kind.CLASS, implName) {
+	    	val immutableImpl = KotlinSimpleTypeSpec(KotlinTypeSpec.Kind.CLASS, implName) {
             addModifier(KotlinModifier.PRIVATE)
             addDoc("Immutable implementation for [$immutableInterfaceName].")
             addTypeVariable(valueTypeVar)
@@ -422,16 +425,15 @@ internal object EnumMapWordsetFileGenerator {
                 }
             )
 
-            superclass(abstractMapType)
-            addSuperinterface(immutableType.parameterized(valueTypeVar))
-            addSuperinterface(wordsetBasedType)
+	    	    superclass(abstractMapType)
+	    	    addSuperinterface(immutableType.parameterized(valueTypeVar))
 
             addFunction(
                 KotlinFunctionSpec("containsOrdinal", KotlinClassNames.BOOLEAN.ref()) {
                     addModifier(KotlinModifier.PRIVATE)
                     addParameter(KotlinValueParameterSpec("ordinal", KotlinClassNames.INT.ref()))
                     addCode(
-                        CodeValue {
+	    	                CodeValue {
                             addStatement("val wordIndex = ordinal ushr 6")
                             addStatement("if (wordIndex >= keyWords.size) return false")
                             addStatement("return (keyWords[wordIndex] and (1L shl (ordinal and 63))) != 0L")
@@ -606,9 +608,9 @@ internal object EnumMapWordsetFileGenerator {
                             addStatement("if (other !is Map<*, *>) return false")
                             addStatement("if (size != other.size) return false")
 
-                            beginControlFlow("if (other is WordsetBased)")
-                            addStatement("val leftWords = keyWords")
-                            addStatement("val rightWords = other.keyWords")
+	    	                    beginControlFlow("if (other is $implName<*>)")
+	    	                    addStatement("val leftWords = keyWords")
+	    	                    addStatement("val rightWords = other.keyWords")
                             addStatement("val minSize = minOf(leftWords.size, rightWords.size)")
                             beginControlFlow("for (wordIndex in 0 until minSize)")
                             addStatement("if (leftWords[wordIndex] != rightWords[wordIndex]) return false")
@@ -620,7 +622,7 @@ internal object EnumMapWordsetFileGenerator {
                             addStatement("if (rightWords[wordIndex] != 0L) return false")
                             endControlFlow()
 
-                            beginControlFlow("for (wordIndex in leftWords.indices)")
+	    	                    beginControlFlow("for (wordIndex in leftWords.indices)")
                             addStatement("var word = leftWords[wordIndex]")
                             beginControlFlow("while (word != 0L)")
                             addStatement("val bit = word.countTrailingZeroBits()")
@@ -631,8 +633,36 @@ internal object EnumMapWordsetFileGenerator {
                             addStatement("word = word and (word - 1)")
                             endControlFlow()
                             endControlFlow()
-                            addStatement("return true")
-                            endControlFlow()
+	    	                    addStatement("return true")
+	    	                    endControlFlow()
+
+	    	                    beginControlFlow("if (other is $mutableImplName<*>)")
+	    	                    addStatement("val leftWords = keyWords")
+	    	                    addStatement("val rightWords = other.keyWords")
+	    	                    addStatement("val minSize = minOf(leftWords.size, rightWords.size)")
+	    	                    beginControlFlow("for (wordIndex in 0 until minSize)")
+	    	                    addStatement("if (leftWords[wordIndex] != rightWords[wordIndex]) return false")
+	    	                    endControlFlow()
+	    	                    beginControlFlow("for (wordIndex in minSize until leftWords.size)")
+	    	                    addStatement("if (leftWords[wordIndex] != 0L) return false")
+	    	                    endControlFlow()
+	    	                    beginControlFlow("for (wordIndex in minSize until rightWords.size)")
+	    	                    addStatement("if (rightWords[wordIndex] != 0L) return false")
+	    	                    endControlFlow()
+	    	
+	    	                    beginControlFlow("for (wordIndex in leftWords.indices)")
+	    	                    addStatement("var word = leftWords[wordIndex]")
+	    	                    beginControlFlow("while (word != 0L)")
+	    	                    addStatement("val bit = word.countTrailingZeroBits()")
+	    	                    addStatement("val ordinal = (wordIndex shl 6) + bit")
+	    	                    addStatement("val leftValue = if (ordinal < slots.size) slots[ordinal] else null")
+	    	                    addStatement("val rightValue = if (ordinal < other.slots.size) other.slots[ordinal] else null")
+	    	                    addStatement("if (leftValue != rightValue) return false")
+	    	                    addStatement("word = word and (word - 1)")
+	    	                    endControlFlow()
+	    	                    endControlFlow()
+	    	                    addStatement("return true")
+	    	                    endControlFlow()
 
                             beginControlFlow("for ((key, value) in entries)")
                             addStatement("val otherValue = other[key]")
@@ -679,7 +709,7 @@ internal object EnumMapWordsetFileGenerator {
         val mutableIteratorTypeRef =
             ClassName("kotlin.collections", "MutableIterator").parameterized(mutableEntryTypeRef).ref()
 
-        val mutableImpl = KotlinSimpleTypeSpec(KotlinTypeSpec.Kind.CLASS, mutableImplName) {
+	    	val mutableImpl = KotlinSimpleTypeSpec(KotlinTypeSpec.Kind.CLASS, mutableImplName) {
             addModifier(KotlinModifier.PRIVATE)
             addDoc("Mutable implementation for [$mutableInterfaceName].")
             addTypeVariable(valueTypeVar)
@@ -707,9 +737,8 @@ internal object EnumMapWordsetFileGenerator {
                 }
             )
 
-            superclass(abstractMutableMapType)
-            addSuperinterface(mutableType.parameterized(valueTypeVar))
-            addSuperinterface(wordsetBasedType)
+	    	    superclass(abstractMutableMapType)
+	    	    addSuperinterface(mutableType.parameterized(valueTypeVar))
 
             addFunction(
                 KotlinFunctionSpec("containsOrdinal", KotlinClassNames.BOOLEAN.ref()) {
@@ -845,15 +874,19 @@ internal object EnumMapWordsetFileGenerator {
                 KotlinFunctionSpec("putAll") {
                     addModifier(KotlinModifier.OVERRIDE)
                     addParameter(KotlinValueParameterSpec("from", mapTypeRef))
-                    addCode(
-                        CodeValue {
-                            addStatement("if (from.isEmpty()) return")
-                            beginControlFlow("if (from is WordsetBased)")
-                            addStatement("val sourceWords = from.keyWords")
-                            addStatement("if (sourceWords.isEmpty()) return")
-                            addStatement("val minSize = minOf(sourceWords.size, keyWords.size)")
-                            addStatement("var addedCount = 0")
-                            beginControlFlow("for (wordIndex in 0 until minSize)")
+	            addCode(
+	                CodeValue {
+	                    addStatement("if (from.isEmpty()) return")
+	                    beginControlFlow("val sourceWords = when (from)")
+	                    addStatement("is $implName<*> -> from.keyWords")
+	                    addStatement("is $mutableImplName<*> -> from.keyWords")
+	                    addStatement("else -> null")
+	                    endControlFlow()
+	                    beginControlFlow("if (sourceWords != null)")
+	                    addStatement("if (sourceWords.isEmpty()) return")
+	                    addStatement("val minSize = minOf(sourceWords.size, keyWords.size)")
+	                    addStatement("var addedCount = 0")
+	                    beginControlFlow("for (wordIndex in 0 until minSize)")
                             addStatement("val sourceWord = sourceWords[wordIndex]")
                             addStatement("if (sourceWord == 0L) continue")
                             addStatement("val oldWord = keyWords[wordIndex]")
@@ -865,13 +898,17 @@ internal object EnumMapWordsetFileGenerator {
                             addStatement("var word = sourceWord")
                             beginControlFlow("while (word != 0L)")
                             addStatement("val bit = word.countTrailingZeroBits()")
-                            addStatement("val ordinal = (wordIndex shl 6) + bit")
-                            addStatement("if (ordinal < from.slots.size) slots[ordinal] = from.slots[ordinal]")
-                            addStatement("word = word and (word - 1)")
-                            endControlFlow()
-                            endControlFlow()
-                            addStatement("mapSize += addedCount")
-                            addStatement("return")
+	                            addStatement("val ordinal = (wordIndex shl 6) + bit")
+	                            addStatement("val sourceSlots = when (from)")
+	                            addStatement("is $implName<*> -> from.slots")
+	                            addStatement("is $mutableImplName<*> -> from.slots")
+	                            addStatement("else -> null")
+	                            addStatement("if (sourceSlots != null && ordinal < sourceSlots.size) slots[ordinal] = sourceSlots[ordinal]")
+	                            addStatement("word = word and (word - 1)")
+	                            endControlFlow()
+	                            endControlFlow()
+	                            addStatement("mapSize += addedCount")
+	                            addStatement("return")
                             endControlFlow()
 
                             beginControlFlow("for ((key, value) in from)")
@@ -1064,10 +1101,10 @@ internal object EnumMapWordsetFileGenerator {
                             addStatement("if (other !is Map<*, *>) return false")
                             addStatement("if (size != other.size) return false")
 
-                            beginControlFlow("if (other is WordsetBased)")
-                            addStatement("val leftWords = keyWords")
-                            addStatement("val rightWords = other.keyWords")
-                            addStatement("val minSize = minOf(leftWords.size, rightWords.size)")
+	                            beginControlFlow("if (other is $implName<*>)")
+	                            addStatement("val leftWords = keyWords")
+	                            addStatement("val rightWords = other.keyWords")
+	                            addStatement("val minSize = minOf(leftWords.size, rightWords.size)")
                             beginControlFlow("for (wordIndex in 0 until minSize)")
                             addStatement("if (leftWords[wordIndex] != rightWords[wordIndex]) return false")
                             endControlFlow()
@@ -1078,7 +1115,7 @@ internal object EnumMapWordsetFileGenerator {
                             addStatement("if (rightWords[wordIndex] != 0L) return false")
                             endControlFlow()
 
-                            beginControlFlow("for (wordIndex in leftWords.indices)")
+	                            beginControlFlow("for (wordIndex in leftWords.indices)")
                             addStatement("var word = leftWords[wordIndex]")
                             beginControlFlow("while (word != 0L)")
                             addStatement("val bit = word.countTrailingZeroBits()")
@@ -1089,8 +1126,36 @@ internal object EnumMapWordsetFileGenerator {
                             addStatement("word = word and (word - 1)")
                             endControlFlow()
                             endControlFlow()
-                            addStatement("return true")
-                            endControlFlow()
+	                            addStatement("return true")
+	                            endControlFlow()
+
+	                            beginControlFlow("if (other is $mutableImplName<*>)")
+	                            addStatement("val leftWords = keyWords")
+	                            addStatement("val rightWords = other.keyWords")
+	                            addStatement("val minSize = minOf(leftWords.size, rightWords.size)")
+	                            beginControlFlow("for (wordIndex in 0 until minSize)")
+	                            addStatement("if (leftWords[wordIndex] != rightWords[wordIndex]) return false")
+	                            endControlFlow()
+	                            beginControlFlow("for (wordIndex in minSize until leftWords.size)")
+	                            addStatement("if (leftWords[wordIndex] != 0L) return false")
+	                            endControlFlow()
+	                            beginControlFlow("for (wordIndex in minSize until rightWords.size)")
+	                            addStatement("if (rightWords[wordIndex] != 0L) return false")
+	                            endControlFlow()
+
+	                            beginControlFlow("for (wordIndex in leftWords.indices)")
+	                            addStatement("var word = leftWords[wordIndex]")
+	                            beginControlFlow("while (word != 0L)")
+	                            addStatement("val bit = word.countTrailingZeroBits()")
+	                            addStatement("val ordinal = (wordIndex shl 6) + bit")
+	                            addStatement("val leftValue = slots[ordinal]")
+	                            addStatement("val rightValue = if (ordinal < other.slots.size) other.slots[ordinal] else null")
+	                            addStatement("if (leftValue != rightValue) return false")
+	                            addStatement("word = word and (word - 1)")
+	                            endControlFlow()
+	                            endControlFlow()
+	                            addStatement("return true")
+	                            endControlFlow()
 
                             beginControlFlow("for ((key, value) in entries)")
                             addStatement("val otherValue = other[key]")
@@ -1128,14 +1193,13 @@ internal object EnumMapWordsetFileGenerator {
             )
         }
 
-        return FileSpec(
-            types = listOf(
-                immutableInterface,
-                mutableInterface,
-                privateWordsetBasedInterface,
-                immutableImpl,
-                mutableImpl,
-            ),
+	    	return FileSpec(
+	    	    types = listOf(
+	    	        immutableInterface,
+	    	        mutableInterface,
+	    	        immutableImpl,
+	    	        mutableImpl,
+	    	    ),
             functions = listOf(
                 utilToMutable,
                 utilToImmutable,

@@ -54,19 +54,13 @@ internal object EnumSetWordsetFileGenerator {
         val setTypeRef = setType.ref()
         val iterableTypeRef = KotlinClassNames.ITERABLE.parameterized(keyTypeRef).ref()
 
-        val superImmutable = if (inheritApi) API_ENUM_SET.parameterized(keyTypeRef) else setType
-        val superMutable = if (inheritApi) API_MUTABLE_ENUM_SET.parameterized(keyTypeRef) else mutableSetType
+	    	val superImmutable = if (inheritApi) API_ENUM_SET.parameterized(keyTypeRef) else setType
+	    	val superMutable = if (inheritApi) API_MUTABLE_ENUM_SET.parameterized(keyTypeRef) else mutableSetType
 
-        val privateWordsetInterface = KotlinSimpleTypeSpec(KotlinTypeSpec.Kind.INTERFACE, "WordsetBased") {
-            addModifier(KotlinModifier.PRIVATE)
-            addProperty(KotlinPropertySpec("bs", longArrayTypeRef))
-        }
-        val wordsetBasedType = ClassName(packageName, "WordsetBased")
-
-        val immutableInterface = KotlinSimpleTypeSpec(KotlinTypeSpec.Kind.INTERFACE, immutableInterfaceName) {
-            applyVisibility(visibility)
-            addDoc("An enum-specialized set optimized for [$enumRef].")
-            addSuperinterface(superImmutable)
+	    	val immutableInterface = KotlinSimpleTypeSpec(KotlinTypeSpec.Kind.INTERFACE, immutableInterfaceName) {
+	    	    applyVisibility(visibility)
+	    	    addDoc("An enum-specialized set optimized for [$enumRef].")
+	    	    addSuperinterface(superImmutable)
             if (!inheritApi) {
                 addFunction(
                     KotlinFunctionSpec("containsAny", KotlinClassNames.BOOLEAN.ref()) {
@@ -333,22 +327,20 @@ internal object EnumSetWordsetFileGenerator {
             )
         }
 
-        val immutableImpl = KotlinSimpleTypeSpec(KotlinTypeSpec.Kind.CLASS, implName) {
-            addModifier(KotlinModifier.PRIVATE)
-            addDoc("Immutable implementation for [$immutableInterfaceName].")
-            primaryConstructor(
-                KotlinConstructorSpec {
-                    addParameter(
-                        KotlinValueParameterSpec("bs", longArrayTypeRef) {
-                            addModifier(KotlinModifier.OVERRIDE)
-                            immutableProperty()
-                        }
-                    )
-                }
-            )
+	    	val immutableImpl = KotlinSimpleTypeSpec(KotlinTypeSpec.Kind.CLASS, implName) {
+	    	    addModifier(KotlinModifier.PRIVATE)
+	    	    addDoc("Immutable implementation for [$immutableInterfaceName].")
+	    	    primaryConstructor(
+	    	        KotlinConstructorSpec {
+	    	            addParameter(
+	    	                KotlinValueParameterSpec("bs", longArrayTypeRef) {
+	    	                    immutableProperty()
+	    	                }
+	    	            )
+	    	        }
+	    	    )
 
-            addSuperinterface(immutableType)
-            addSuperinterface(wordsetBasedType)
+	    	    addSuperinterface(immutableType)
 
             addFunction(
                 KotlinFunctionSpec("contains", KotlinClassNames.BOOLEAN.ref()) {
@@ -369,18 +361,22 @@ internal object EnumSetWordsetFileGenerator {
                     addModifier(KotlinModifier.OVERRIDE)
                     addParameter(KotlinValueParameterSpec("elements", collectionTypeRef))
                     addCode(
-                        CodeValue {
-                            addStatement("if (elements.isEmpty()) return true")
-                            beginControlFlow("if (elements is WordsetBased)")
-                            addStatement("val otherWords = elements.bs")
-                            addStatement("if (otherWords.size > bs.size) return false")
-                            beginControlFlow("for (wordIndex in otherWords.indices)")
-                            addStatement("val otherWord = otherWords[wordIndex]")
-                            addStatement("if ((bs[wordIndex] and otherWord) != otherWord) return false")
-                            endControlFlow()
-                            addStatement("return true")
-                            endControlFlow()
-                            addStatement("if (bs.isEmpty()) return false")
+	    	                CodeValue {
+	    	                    addStatement("if (elements.isEmpty()) return true")
+	    	                    beginControlFlow("val otherWords = when (elements)")
+	    	                    addStatement("is $implName -> elements.bs")
+	    	                    addStatement("is $mutableImplName -> elements.bs")
+	    	                    addStatement("else -> null")
+	    	                    endControlFlow()
+	    	                    beginControlFlow("if (otherWords != null)")
+	    	                    addStatement("if (otherWords.size > bs.size) return false")
+	    	                    beginControlFlow("for (wordIndex in otherWords.indices)")
+	    	                    addStatement("val otherWord = otherWords[wordIndex]")
+	    	                    addStatement("if ((bs[wordIndex] and otherWord) != otherWord) return false")
+	    	                    endControlFlow()
+	    	                    addStatement("return true")
+	    	                    endControlFlow()
+	    	                    addStatement("if (bs.isEmpty()) return false")
                             beginControlFlow("for (element in elements)")
                             addStatement("if (!contains(element)) return false")
                             endControlFlow()
@@ -395,16 +391,20 @@ internal object EnumSetWordsetFileGenerator {
                     addModifier(KotlinModifier.OVERRIDE)
                     addParameter(KotlinValueParameterSpec("elements", collectionTypeRef))
                     addCode(
-                        CodeValue {
-                            addStatement("if (elements.isEmpty() || bs.isEmpty()) return false")
-                            beginControlFlow("if (elements is WordsetBased)")
-                            addStatement("val otherWords = elements.bs")
-                            addStatement("val minSize = minOf(bs.size, otherWords.size)")
-                            beginControlFlow("for (wordIndex in 0 until minSize)")
-                            addStatement("if ((bs[wordIndex] and otherWords[wordIndex]) != 0L) return true")
-                            endControlFlow()
-                            addStatement("return false")
-                            endControlFlow()
+	    	                CodeValue {
+	    	                    addStatement("if (elements.isEmpty() || bs.isEmpty()) return false")
+	    	                    beginControlFlow("val otherWords = when (elements)")
+	    	                    addStatement("is $implName -> elements.bs")
+	    	                    addStatement("is $mutableImplName -> elements.bs")
+	    	                    addStatement("else -> null")
+	    	                    endControlFlow()
+	    	                    beginControlFlow("if (otherWords != null)")
+	    	                    addStatement("val minSize = minOf(bs.size, otherWords.size)")
+	    	                    beginControlFlow("for (wordIndex in 0 until minSize)")
+	    	                    addStatement("if ((bs[wordIndex] and otherWords[wordIndex]) != 0L) return true")
+	    	                    endControlFlow()
+	    	                    addStatement("return false")
+	    	                    endControlFlow()
                             beginControlFlow("for (element in elements)")
                             addStatement("if (contains(element)) return true")
                             endControlFlow()
@@ -419,15 +419,19 @@ internal object EnumSetWordsetFileGenerator {
                     addModifier(KotlinModifier.OVERRIDE)
                     addParameter(KotlinValueParameterSpec("other", setTypeRef))
                     addCode(
-                        CodeValue {
-                            addStatement("if (bs.isEmpty() || other.isEmpty()) return EMPTY")
-                            addStatement("if (other === this) return this")
-                            beginControlFlow("if (other is WordsetBased)")
-                            addStatement("val otherWords = other.bs")
-                            addStatement("val minSize = minOf(bs.size, otherWords.size)")
-                            addStatement("val resultWords = LongArray(minSize)")
-                            addStatement("var lastNonZeroWordIndex = -1")
-                            beginControlFlow("for (wordIndex in 0 until minSize)")
+	    	                CodeValue {
+	    	                    addStatement("if (bs.isEmpty() || other.isEmpty()) return EMPTY")
+	    	                    addStatement("if (other === this) return this")
+	    	                    beginControlFlow("val otherWords = when (other)")
+	    	                    addStatement("is $implName -> other.bs")
+	    	                    addStatement("is $mutableImplName -> other.bs")
+	    	                    addStatement("else -> null")
+	    	                    endControlFlow()
+	    	                    beginControlFlow("if (otherWords != null)")
+	    	                    addStatement("val minSize = minOf(bs.size, otherWords.size)")
+	    	                    addStatement("val resultWords = LongArray(minSize)")
+	    	                    addStatement("var lastNonZeroWordIndex = -1")
+	    	                    beginControlFlow("for (wordIndex in 0 until minSize)")
                             addStatement("val word = bs[wordIndex] and otherWords[wordIndex]")
                             addStatement("resultWords[wordIndex] = word")
                             addStatement("if (word != 0L) lastNonZeroWordIndex = wordIndex")
@@ -472,16 +476,20 @@ internal object EnumSetWordsetFileGenerator {
                     addModifier(KotlinModifier.OVERRIDE)
                     addParameter(KotlinValueParameterSpec("other", setTypeRef))
                     addCode(
-                        CodeValue {
-                            addStatement("if (other.isEmpty()) return this")
-                            addStatement("if (other === this) return this")
-                            beginControlFlow("if (other is WordsetBased)")
-                            addStatement("val currentWords = bs")
-                            addStatement("val otherWords = other.bs")
-                            beginControlFlow("if (otherWords.size <= currentWords.size)")
-                            addStatement("val resultWords = currentWords.copyOf()")
-                            addStatement("var changed = false")
-                            beginControlFlow("for (wordIndex in otherWords.indices)")
+	    	                CodeValue {
+	    	                    addStatement("if (other.isEmpty()) return this")
+	    	                    addStatement("if (other === this) return this")
+	    	                    beginControlFlow("val otherWords = when (other)")
+	    	                    addStatement("is $implName -> other.bs")
+	    	                    addStatement("is $mutableImplName -> other.bs")
+	    	                    addStatement("else -> null")
+	    	                    endControlFlow()
+	    	                    beginControlFlow("if (otherWords != null)")
+	    	                    addStatement("val currentWords = bs")
+	    	                    beginControlFlow("if (otherWords.size <= currentWords.size)")
+	    	                    addStatement("val resultWords = currentWords.copyOf()")
+	    	                    addStatement("var changed = false")
+	    	                    beginControlFlow("for (wordIndex in otherWords.indices)")
                             addStatement("val oldWord = resultWords[wordIndex]")
                             addStatement("val mergedWord = oldWord or otherWords[wordIndex]")
                             beginControlFlow("if (mergedWord != oldWord)")
@@ -534,15 +542,19 @@ internal object EnumSetWordsetFileGenerator {
                     addModifier(KotlinModifier.OVERRIDE)
                     addParameter(KotlinValueParameterSpec("other", setTypeRef))
                     addCode(
-                        CodeValue {
-                            addStatement("if (bs.isEmpty() || other.isEmpty()) return this")
-                            addStatement("if (other === this) return EMPTY")
-                            beginControlFlow("if (other is WordsetBased)")
-                            addStatement("val otherWords = other.bs")
-                            addStatement("val resultWords = bs.copyOf()")
-                            addStatement("val minSize = minOf(resultWords.size, otherWords.size)")
-                            addStatement("var changed = false")
-                            addStatement("var lastNonZeroWordIndex = -1")
+	    	                CodeValue {
+	    	                    addStatement("if (bs.isEmpty() || other.isEmpty()) return this")
+	    	                    addStatement("if (other === this) return EMPTY")
+	    	                    beginControlFlow("val otherWords = when (other)")
+	    	                    addStatement("is $implName -> other.bs")
+	    	                    addStatement("is $mutableImplName -> other.bs")
+	    	                    addStatement("else -> null")
+	    	                    endControlFlow()
+	    	                    beginControlFlow("if (otherWords != null)")
+	    	                    addStatement("val resultWords = bs.copyOf()")
+	    	                    addStatement("val minSize = minOf(resultWords.size, otherWords.size)")
+	    	                    addStatement("var changed = false")
+	    	                    addStatement("var lastNonZeroWordIndex = -1")
                             addStatement("var wordIndex = 0")
                             beginControlFlow("while (wordIndex < minSize)")
                             addStatement("val oldWord = resultWords[wordIndex]")
@@ -635,16 +647,20 @@ internal object EnumSetWordsetFileGenerator {
                     addModifier(KotlinModifier.OVERRIDE)
                     addParameter(KotlinValueParameterSpec("other", anyNullableRef))
                     addCode(
-                        CodeValue {
-                            addStatement("if (this === other) return true")
-                            addStatement("if (other !is Set<*>) return false")
-                            beginControlFlow("if (other is WordsetBased)")
-                            addStatement("val leftWords = bs")
-                            addStatement("val rightWords = other.bs")
-                            addStatement("val minSize = minOf(leftWords.size, rightWords.size)")
-                            beginControlFlow("for (wordIndex in 0 until minSize)")
-                            addStatement("if (leftWords[wordIndex] != rightWords[wordIndex]) return false")
-                            endControlFlow()
+	    	                CodeValue {
+	    	                    addStatement("if (this === other) return true")
+	    	                    addStatement("if (other !is Set<*>) return false")
+	    	                    beginControlFlow("val rightWords = when (other)")
+	    	                    addStatement("is $implName -> other.bs")
+	    	                    addStatement("is $mutableImplName -> other.bs")
+	    	                    addStatement("else -> null")
+	    	                    endControlFlow()
+	    	                    beginControlFlow("if (rightWords != null)")
+	    	                    addStatement("val leftWords = bs")
+	    	                    addStatement("val minSize = minOf(leftWords.size, rightWords.size)")
+	    	                    beginControlFlow("for (wordIndex in 0 until minSize)")
+	    	                    addStatement("if (leftWords[wordIndex] != rightWords[wordIndex]) return false")
+	    	                    endControlFlow()
                             beginControlFlow("for (wordIndex in minSize until leftWords.size)")
                             addStatement("if (leftWords[wordIndex] != 0L) return false")
                             endControlFlow()
@@ -688,22 +704,20 @@ internal object EnumSetWordsetFileGenerator {
             )
         }
 
-        val mutableImpl = KotlinSimpleTypeSpec(KotlinTypeSpec.Kind.CLASS, mutableImplName) {
-            addModifier(KotlinModifier.PRIVATE)
-            addDoc("Mutable implementation for [$mutableInterfaceName].")
-            primaryConstructor(
-                KotlinConstructorSpec {
-                    addParameter(
-                        KotlinValueParameterSpec("bs", longArrayTypeRef) {
-                            addModifier(KotlinModifier.OVERRIDE)
-                            mutableProperty()
-                        }
-                    )
-                }
-            )
+	    	val mutableImpl = KotlinSimpleTypeSpec(KotlinTypeSpec.Kind.CLASS, mutableImplName) {
+	    	    addModifier(KotlinModifier.PRIVATE)
+	    	    addDoc("Mutable implementation for [$mutableInterfaceName].")
+	    	    primaryConstructor(
+	    	        KotlinConstructorSpec {
+	    	            addParameter(
+	    	                KotlinValueParameterSpec("bs", longArrayTypeRef) {
+	    	                    mutableProperty()
+	    	                }
+	    	            )
+	    	        }
+	    	    )
 
-            addSuperinterface(mutableType)
-            addSuperinterface(wordsetBasedType)
+	    	    addSuperinterface(mutableType)
 
             addFunction(
                 KotlinFunctionSpec("copy", mutableType.ref()) {
@@ -731,18 +745,22 @@ internal object EnumSetWordsetFileGenerator {
                     addModifier(KotlinModifier.OVERRIDE)
                     addParameter(KotlinValueParameterSpec("elements", collectionTypeRef))
                     addCode(
-                        CodeValue {
-                            addStatement("if (elements.isEmpty()) return true")
-                            beginControlFlow("if (elements is WordsetBased)")
-                            addStatement("val otherWords = elements.bs")
-                            addStatement("if (otherWords.size > bs.size) return false")
-                            beginControlFlow("for (wordIndex in otherWords.indices)")
-                            addStatement("val otherWord = otherWords[wordIndex]")
-                            addStatement("if ((bs[wordIndex] and otherWord) != otherWord) return false")
-                            endControlFlow()
-                            addStatement("return true")
-                            endControlFlow()
-                            addStatement("if (bs.isEmpty()) return false")
+	    	                CodeValue {
+	    	                    addStatement("if (elements.isEmpty()) return true")
+	    	                    beginControlFlow("val otherWords = when (elements)")
+	    	                    addStatement("is $implName -> elements.bs")
+	    	                    addStatement("is $mutableImplName -> elements.bs")
+	    	                    addStatement("else -> null")
+	    	                    endControlFlow()
+	    	                    beginControlFlow("if (otherWords != null)")
+	    	                    addStatement("if (otherWords.size > bs.size) return false")
+	    	                    beginControlFlow("for (wordIndex in otherWords.indices)")
+	    	                    addStatement("val otherWord = otherWords[wordIndex]")
+	    	                    addStatement("if ((bs[wordIndex] and otherWord) != otherWord) return false")
+	    	                    endControlFlow()
+	    	                    addStatement("return true")
+	    	                    endControlFlow()
+	    	                    addStatement("if (bs.isEmpty()) return false")
                             beginControlFlow("for (element in elements)")
                             addStatement("if (!contains(element)) return false")
                             endControlFlow()
@@ -757,16 +775,20 @@ internal object EnumSetWordsetFileGenerator {
                     addModifier(KotlinModifier.OVERRIDE)
                     addParameter(KotlinValueParameterSpec("elements", collectionTypeRef))
                     addCode(
-                        CodeValue {
-                            addStatement("if (elements.isEmpty() || bs.isEmpty()) return false")
-                            beginControlFlow("if (elements is WordsetBased)")
-                            addStatement("val otherWords = elements.bs")
-                            addStatement("val minSize = minOf(bs.size, otherWords.size)")
-                            beginControlFlow("for (wordIndex in 0 until minSize)")
-                            addStatement("if ((bs[wordIndex] and otherWords[wordIndex]) != 0L) return true")
-                            endControlFlow()
-                            addStatement("return false")
-                            endControlFlow()
+	    	                CodeValue {
+	    	                    addStatement("if (elements.isEmpty() || bs.isEmpty()) return false")
+	    	                    beginControlFlow("val otherWords = when (elements)")
+	    	                    addStatement("is $implName -> elements.bs")
+	    	                    addStatement("is $mutableImplName -> elements.bs")
+	    	                    addStatement("else -> null")
+	    	                    endControlFlow()
+	    	                    beginControlFlow("if (otherWords != null)")
+	    	                    addStatement("val minSize = minOf(bs.size, otherWords.size)")
+	    	                    beginControlFlow("for (wordIndex in 0 until minSize)")
+	    	                    addStatement("if ((bs[wordIndex] and otherWords[wordIndex]) != 0L) return true")
+	    	                    endControlFlow()
+	    	                    addStatement("return false")
+	    	                    endControlFlow()
                             beginControlFlow("for (element in elements)")
                             addStatement("if (contains(element)) return true")
                             endControlFlow()
@@ -782,15 +804,19 @@ internal object EnumSetWordsetFileGenerator {
                     addModifier(KotlinModifier.OVERRIDE)
                     addParameter(KotlinValueParameterSpec("other", setTypeRef))
                     addCode(
-                        CodeValue {
-                            addStatement("if (bs.isEmpty() || other.isEmpty()) return EMPTY")
-                            addStatement("if (other === this) return createEnumSet(bs.copyOf())")
-                            beginControlFlow("if (other is WordsetBased)")
-                            addStatement("val otherWords = other.bs")
-                            addStatement("val minSize = minOf(bs.size, otherWords.size)")
-                            addStatement("val resultWords = LongArray(minSize)")
-                            addStatement("var lastNonZeroWordIndex = -1")
-                            beginControlFlow("for (wordIndex in 0 until minSize)")
+	    	                CodeValue {
+	    	                    addStatement("if (bs.isEmpty() || other.isEmpty()) return EMPTY")
+	    	                    addStatement("if (other === this) return createEnumSet(bs.copyOf())")
+	    	                    beginControlFlow("val otherWords = when (other)")
+	    	                    addStatement("is $implName -> other.bs")
+	    	                    addStatement("is $mutableImplName -> other.bs")
+	    	                    addStatement("else -> null")
+	    	                    endControlFlow()
+	    	                    beginControlFlow("if (otherWords != null)")
+	    	                    addStatement("val minSize = minOf(bs.size, otherWords.size)")
+	    	                    addStatement("val resultWords = LongArray(minSize)")
+	    	                    addStatement("var lastNonZeroWordIndex = -1")
+	    	                    beginControlFlow("for (wordIndex in 0 until minSize)")
                             addStatement("val word = bs[wordIndex] and otherWords[wordIndex]")
                             addStatement("resultWords[wordIndex] = word")
                             addStatement("if (word != 0L) lastNonZeroWordIndex = wordIndex")
@@ -835,15 +861,19 @@ internal object EnumSetWordsetFileGenerator {
                     addModifier(KotlinModifier.OVERRIDE)
                     addParameter(KotlinValueParameterSpec("other", setTypeRef))
                     addCode(
-                        CodeValue {
-                            addStatement("if (other.isEmpty()) return createEnumSet(bs.copyOf())")
-                            addStatement("if (other === this) return createEnumSet(bs.copyOf())")
-                            beginControlFlow("if (other is WordsetBased)")
-                            addStatement("val otherWords = other.bs")
-                            addStatement("val maxSize = maxOf(bs.size, otherWords.size)")
-                            addStatement("val resultWords = LongArray(maxSize)")
-                            beginControlFlow("for (wordIndex in 0 until maxSize)")
-                            addStatement("val leftWord = if (wordIndex < bs.size) bs[wordIndex] else 0L")
+	    	                CodeValue {
+	    	                    addStatement("if (other.isEmpty()) return createEnumSet(bs.copyOf())")
+	    	                    addStatement("if (other === this) return createEnumSet(bs.copyOf())")
+	    	                    beginControlFlow("val otherWords = when (other)")
+	    	                    addStatement("is $implName -> other.bs")
+	    	                    addStatement("is $mutableImplName -> other.bs")
+	    	                    addStatement("else -> null")
+	    	                    endControlFlow()
+	    	                    beginControlFlow("if (otherWords != null)")
+	    	                    addStatement("val maxSize = maxOf(bs.size, otherWords.size)")
+	    	                    addStatement("val resultWords = LongArray(maxSize)")
+	    	                    beginControlFlow("for (wordIndex in 0 until maxSize)")
+	    	                    addStatement("val leftWord = if (wordIndex < bs.size) bs[wordIndex] else 0L")
                             addStatement("val rightWord = if (wordIndex < otherWords.size) otherWords[wordIndex] else 0L")
                             addStatement("resultWords[wordIndex] = leftWord or rightWord")
                             endControlFlow()
@@ -869,15 +899,19 @@ internal object EnumSetWordsetFileGenerator {
                     addModifier(KotlinModifier.OVERRIDE)
                     addParameter(KotlinValueParameterSpec("other", setTypeRef))
                     addCode(
-                        CodeValue {
-                            addStatement("if (bs.isEmpty() || other.isEmpty()) return createEnumSet(bs.copyOf())")
-                            addStatement("if (other === this) return EMPTY")
-                            beginControlFlow("if (other is WordsetBased)")
-                            addStatement("val otherWords = other.bs")
-                            addStatement("val resultWords = bs.copyOf()")
-                            addStatement("val minSize = minOf(resultWords.size, otherWords.size)")
-                            addStatement("var lastNonZeroWordIndex = -1")
-                            addStatement("var wordIndex = 0")
+	    	                CodeValue {
+	    	                    addStatement("if (bs.isEmpty() || other.isEmpty()) return createEnumSet(bs.copyOf())")
+	    	                    addStatement("if (other === this) return EMPTY")
+	    	                    beginControlFlow("val otherWords = when (other)")
+	    	                    addStatement("is $implName -> other.bs")
+	    	                    addStatement("is $mutableImplName -> other.bs")
+	    	                    addStatement("else -> null")
+	    	                    endControlFlow()
+	    	                    beginControlFlow("if (otherWords != null)")
+	    	                    addStatement("val resultWords = bs.copyOf()")
+	    	                    addStatement("val minSize = minOf(resultWords.size, otherWords.size)")
+	    	                    addStatement("var lastNonZeroWordIndex = -1")
+	    	                    addStatement("var wordIndex = 0")
                             beginControlFlow("while (wordIndex < minSize)")
                             addStatement("resultWords[wordIndex] = resultWords[wordIndex] and otherWords[wordIndex].inv()")
                             addStatement("if (resultWords[wordIndex] != 0L) lastNonZeroWordIndex = wordIndex")
@@ -987,14 +1021,18 @@ internal object EnumSetWordsetFileGenerator {
                     addModifier(KotlinModifier.OVERRIDE)
                     addParameter(KotlinValueParameterSpec("elements", collectionTypeRef))
                     addCode(
-                        CodeValue {
-                            addStatement("if (elements.isEmpty()) return false")
-                            beginControlFlow("if (elements is WordsetBased)")
-                            addStatement("val otherWords = elements.bs")
-                            addStatement("if (otherWords.isEmpty()) return false")
-                            beginControlFlow("if (otherWords.size > bs.size)")
-                            addStatement("bs = bs.copyOf(otherWords.size)")
-                            endControlFlow()
+	    	                CodeValue {
+	    	                    addStatement("if (elements.isEmpty()) return false")
+	    	                    beginControlFlow("val otherWords = when (elements)")
+	    	                    addStatement("is $implName -> elements.bs")
+	    	                    addStatement("is $mutableImplName -> elements.bs")
+	    	                    addStatement("else -> null")
+	    	                    endControlFlow()
+	    	                    beginControlFlow("if (otherWords != null)")
+	    	                    addStatement("if (otherWords.isEmpty()) return false")
+	    	                    beginControlFlow("if (otherWords.size > bs.size)")
+	    	                    addStatement("bs = bs.copyOf(otherWords.size)")
+	    	                    endControlFlow()
                             addStatement("var modified = false")
                             beginControlFlow("for (wordIndex in otherWords.indices)")
                             addStatement("val oldWord = bs[wordIndex]")
@@ -1048,14 +1086,18 @@ internal object EnumSetWordsetFileGenerator {
                     addModifier(KotlinModifier.OVERRIDE)
                     addParameter(KotlinValueParameterSpec("elements", collectionTypeRef))
                     addCode(
-                        CodeValue {
-                            addStatement("if (elements.isEmpty() || bs.isEmpty()) return false")
-                            beginControlFlow("if (elements is WordsetBased)")
-                            addStatement("val otherWords = elements.bs")
-                            addStatement("val minSize = minOf(bs.size, otherWords.size)")
-                            addStatement("var modified = false")
-                            beginControlFlow("for (wordIndex in 0 until minSize)")
-                            addStatement("val oldWord = bs[wordIndex]")
+	    	                CodeValue {
+	    	                    addStatement("if (elements.isEmpty() || bs.isEmpty()) return false")
+	    	                    beginControlFlow("val otherWords = when (elements)")
+	    	                    addStatement("is $implName -> elements.bs")
+	    	                    addStatement("is $mutableImplName -> elements.bs")
+	    	                    addStatement("else -> null")
+	    	                    endControlFlow()
+	    	                    beginControlFlow("if (otherWords != null)")
+	    	                    addStatement("val minSize = minOf(bs.size, otherWords.size)")
+	    	                    addStatement("var modified = false")
+	    	                    beginControlFlow("for (wordIndex in 0 until minSize)")
+	    	                    addStatement("val oldWord = bs[wordIndex]")
                             addStatement("val newWord = oldWord and otherWords[wordIndex].inv()")
                             beginControlFlow("if (newWord != oldWord)")
                             addStatement("bs[wordIndex] = newWord")
@@ -1093,14 +1135,18 @@ internal object EnumSetWordsetFileGenerator {
                     addModifier(KotlinModifier.OVERRIDE)
                     addParameter(KotlinValueParameterSpec("elements", collectionTypeRef))
                     addCode(
-                        CodeValue {
-                            addStatement("if (bs.isEmpty()) return false")
-                            beginControlFlow("if (elements is WordsetBased)")
-                            addStatement("val otherWords = elements.bs")
-                            addStatement("if (otherWords.isEmpty()) {")
-                            addStatement("    bs = LongArray(0)")
-                            addStatement("    return true")
-                            addStatement("}")
+	    	                CodeValue {
+	    	                    addStatement("if (bs.isEmpty()) return false")
+	    	                    beginControlFlow("val otherWords = when (elements)")
+	    	                    addStatement("is $implName -> elements.bs")
+	    	                    addStatement("is $mutableImplName -> elements.bs")
+	    	                    addStatement("else -> null")
+	    	                    endControlFlow()
+	    	                    beginControlFlow("if (otherWords != null)")
+	    	                    addStatement("if (otherWords.isEmpty()) {")
+	    	                    addStatement("    bs = LongArray(0)")
+	    	                    addStatement("    return true")
+	    	                    addStatement("}")
                             addStatement("val minSize = minOf(bs.size, otherWords.size)")
                             addStatement("val resultWords = LongArray(minSize)")
                             addStatement("var modified = false")
@@ -1153,16 +1199,20 @@ internal object EnumSetWordsetFileGenerator {
                     addModifier(KotlinModifier.OVERRIDE)
                     addParameter(KotlinValueParameterSpec("other", anyNullableRef))
                     addCode(
-                        CodeValue {
-                            addStatement("if (this === other) return true")
-                            addStatement("if (other !is Set<*>) return false")
-                            beginControlFlow("if (other is WordsetBased)")
-                            addStatement("val leftWords = bs")
-                            addStatement("val rightWords = other.bs")
-                            addStatement("val minSize = minOf(leftWords.size, rightWords.size)")
-                            beginControlFlow("for (wordIndex in 0 until minSize)")
-                            addStatement("if (leftWords[wordIndex] != rightWords[wordIndex]) return false")
-                            endControlFlow()
+	    	                CodeValue {
+	    	                    addStatement("if (this === other) return true")
+	    	                    addStatement("if (other !is Set<*>) return false")
+	    	                    beginControlFlow("val rightWords = when (other)")
+	    	                    addStatement("is $implName -> other.bs")
+	    	                    addStatement("is $mutableImplName -> other.bs")
+	    	                    addStatement("else -> null")
+	    	                    endControlFlow()
+	    	                    beginControlFlow("if (rightWords != null)")
+	    	                    addStatement("val leftWords = bs")
+	    	                    addStatement("val minSize = minOf(leftWords.size, rightWords.size)")
+	    	                    beginControlFlow("for (wordIndex in 0 until minSize)")
+	    	                    addStatement("if (leftWords[wordIndex] != rightWords[wordIndex]) return false")
+	    	                    endControlFlow()
                             beginControlFlow("for (wordIndex in minSize until leftWords.size)")
                             addStatement("if (leftWords[wordIndex] != 0L) return false")
                             endControlFlow()
@@ -1206,14 +1256,13 @@ internal object EnumSetWordsetFileGenerator {
             )
         }
 
-        return FileSpec(
-            types = listOf(
-                immutableInterface,
-                mutableInterface,
-                privateWordsetInterface,
-                immutableImpl,
-                mutableImpl,
-            ),
+	    	return FileSpec(
+	    	    types = listOf(
+	    	        immutableInterface,
+	    	        mutableInterface,
+	    	        immutableImpl,
+	    	        mutableImpl,
+	    	    ),
             functions = listOf(
                 utilToMutable,
                 utilToImmutable,

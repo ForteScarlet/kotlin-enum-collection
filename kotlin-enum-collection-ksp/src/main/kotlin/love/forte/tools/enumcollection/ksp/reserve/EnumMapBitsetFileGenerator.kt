@@ -4,6 +4,7 @@ import love.forte.codegentle.common.code.CodeValue
 import love.forte.codegentle.common.code.beginControlFlow
 import love.forte.codegentle.common.code.endControlFlow
 import love.forte.codegentle.common.naming.ClassName
+import love.forte.codegentle.common.naming.LowerWildcardTypeName
 import love.forte.codegentle.common.naming.TypeVariableName
 import love.forte.codegentle.common.naming.parameterized
 import love.forte.codegentle.common.ref.annotationRef
@@ -95,12 +96,6 @@ internal object EnumMapBitsetFileGenerator {
             addMember(format = "\"UNCHECKED_CAST\"")
         }
 
-        val privateBitsetBasedInterface = KotlinSimpleTypeSpec(KotlinTypeSpec.Kind.INTERFACE, "BitsetBased") {
-            addModifier(KotlinModifier.PRIVATE)
-            addProperty(KotlinPropertySpec("keyBits", bitsTypeRef))
-            addProperty(KotlinPropertySpec("slots", slotsTypeRef))
-        }
-        val bitsetBasedType = ClassName(packageName, "BitsetBased")
 
         val immutableInterface = KotlinSimpleTypeSpec(KotlinTypeSpec.Kind.INTERFACE, immutableInterfaceName) {
             applyVisibility(visibility)
@@ -247,6 +242,9 @@ internal object EnumMapBitsetFileGenerator {
         }
 
         val mapTypeRef = mapType.ref()
+        val mapOutKeyTypeRef = KotlinClassNames.MAP
+            .parameterized(LowerWildcardTypeName(keyTypeRef).ref(), valueTypeVar)
+            .ref()
         val factoryImmutableMap = KotlinFunctionSpec(immutableInterfaceName, immutableTypeRef) {
             applyVisibility(visibility)
             addTypeVariable(valueTypeVar)
@@ -261,7 +259,11 @@ internal object EnumMapBitsetFileGenerator {
                     addStatement("return from as $immutableInterfaceName<V>")
                     endControlFlow()
 
-                    beginControlFlow("if (from is BitsetBased)")
+                    beginControlFlow("if (from is $implName<*>)")
+                    addStatement("return createEnumMapCopy(from.keyBits, from.slots)")
+                    endControlFlow()
+
+                    beginControlFlow("if (from is $mutableImplName<*>)")
                     addStatement("return createEnumMapCopy(from.keyBits, from.slots)")
                     endControlFlow()
 
@@ -319,7 +321,7 @@ internal object EnumMapBitsetFileGenerator {
                     addStatement("return (from as $mutableInterfaceName<V>).copy()")
                     endControlFlow()
 
-                    beginControlFlow("if (from is BitsetBased)")
+                    beginControlFlow("if (from is $implName<*>)")
                     addStatement("return $mutableImplName(from.keyBits, from.slots.copyOf($enumSize))")
                     endControlFlow()
 
@@ -344,13 +346,11 @@ internal object EnumMapBitsetFileGenerator {
                 KotlinConstructorSpec {
                     addParameter(
                         KotlinValueParameterSpec("keyBits", bitsTypeRef) {
-                            addModifier(KotlinModifier.OVERRIDE)
                             immutableProperty()
                         }
                     )
                     addParameter(
                         KotlinValueParameterSpec("slots", slotsTypeRef) {
-                            addModifier(KotlinModifier.OVERRIDE)
                             immutableProperty()
                         }
                     )
@@ -359,7 +359,6 @@ internal object EnumMapBitsetFileGenerator {
 
             superclass(abstractMapType)
             addSuperinterface(immutableType.parameterized(valueTypeVar))
-            addSuperinterface(bitsetBasedType)
 
             addFunction(
                 KotlinFunctionSpec("containsOrdinal", KotlinClassNames.BOOLEAN.ref()) {
@@ -521,7 +520,18 @@ internal object EnumMapBitsetFileGenerator {
                             addStatement("if (other !is Map<*, *>) return false")
                             addStatement("if (size != other.size) return false")
 
-                            beginControlFlow("if (other is BitsetBased)")
+                            beginControlFlow("if (other is $implName<*>)")
+                            addStatement("if (keyBits != other.keyBits) return false")
+                            addStatement("var remaining = keyBits")
+                            beginControlFlow(whileNonZero)
+                            addStatement("val ordinal = remaining.countTrailingZeroBits()")
+                            addStatement("if (slots[ordinal] != other.slots[ordinal]) return false")
+                            addStatement("remaining = remaining and (remaining - $minusOneLiteral)")
+                            endControlFlow()
+                            addStatement("return true")
+                            endControlFlow()
+
+                            beginControlFlow("if (other is $mutableImplName<*>)")
                             addStatement("if (keyBits != other.keyBits) return false")
                             addStatement("var remaining = keyBits")
                             beginControlFlow(whileNonZero)
@@ -565,7 +575,7 @@ internal object EnumMapBitsetFileGenerator {
             )
         }
 
-        val mutableEntryTypeRef = ClassName("kotlin.collections", "MutableMap", "MutableEntry")
+        val mutableEntryTypeRef = ClassName(null, "MutableMap", "MutableEntry")
             .parameterized(keyTypeRef, valueTypeVar)
             .ref()
         val mutableEntriesType = KotlinClassNames.MUTABLE_SET.parameterized(mutableEntryTypeRef)
@@ -583,13 +593,11 @@ internal object EnumMapBitsetFileGenerator {
                 KotlinConstructorSpec {
                     addParameter(
                         KotlinValueParameterSpec("keyBits", bitsTypeRef) {
-                            addModifier(KotlinModifier.OVERRIDE)
                             mutableProperty()
                         }
                     )
                     addParameter(
                         KotlinValueParameterSpec("slots", slotsTypeRef) {
-                            addModifier(KotlinModifier.OVERRIDE)
                             immutableProperty()
                         }
                     )
@@ -598,7 +606,6 @@ internal object EnumMapBitsetFileGenerator {
 
             superclass(abstractMutableMapType)
             addSuperinterface(mutableType.parameterized(valueTypeVar))
-            addSuperinterface(bitsetBasedType)
 
             addFunction(
                 KotlinFunctionSpec("containsOrdinal", KotlinClassNames.BOOLEAN.ref()) {
@@ -718,11 +725,24 @@ internal object EnumMapBitsetFileGenerator {
             addFunction(
                 KotlinFunctionSpec("putAll") {
                     addModifier(KotlinModifier.OVERRIDE)
-                    addParameter(KotlinValueParameterSpec("from", mapTypeRef))
+                    addParameter(KotlinValueParameterSpec("from", mapOutKeyTypeRef))
                     addCode(
                         CodeValue {
                             addStatement("if (from.isEmpty()) return")
-                            beginControlFlow("if (from is BitsetBased)")
+                            beginControlFlow("if (from is $implName<*>)")
+                            addStatement("val sourceBits = from.keyBits")
+                            addStatement("if (sourceBits == $zeroLiteral) return")
+                            addStatement("keyBits = keyBits or sourceBits")
+                            addStatement("var remaining = sourceBits")
+                            beginControlFlow(whileNonZero)
+                            addStatement("val ordinal = remaining.countTrailingZeroBits()")
+                            addStatement("slots[ordinal] = from.slots[ordinal]")
+                            addStatement("remaining = remaining and (remaining - $minusOneLiteral)")
+                            endControlFlow()
+                            addStatement("return")
+                            endControlFlow()
+
+                            beginControlFlow("if (from is $mutableImplName<*>)")
                             addStatement("val sourceBits = from.keyBits")
                             addStatement("if (sourceBits == $zeroLiteral) return")
                             addStatement("keyBits = keyBits or sourceBits")
@@ -908,7 +928,18 @@ internal object EnumMapBitsetFileGenerator {
                             addStatement("if (other !is Map<*, *>) return false")
                             addStatement("if (size != other.size) return false")
 
-                            beginControlFlow("if (other is BitsetBased)")
+                            beginControlFlow("if (other is $implName<*>)")
+                            addStatement("if (keyBits != other.keyBits) return false")
+                            addStatement("var remaining = keyBits")
+                            beginControlFlow(whileNonZero)
+                            addStatement("val ordinal = remaining.countTrailingZeroBits()")
+                            addStatement("if (slots[ordinal] != other.slots[ordinal]) return false")
+                            addStatement("remaining = remaining and (remaining - $minusOneLiteral)")
+                            endControlFlow()
+                            addStatement("return true")
+                            endControlFlow()
+
+                            beginControlFlow("if (other is $mutableImplName<*>)")
                             addStatement("if (keyBits != other.keyBits) return false")
                             addStatement("var remaining = keyBits")
                             beginControlFlow(whileNonZero)
@@ -956,7 +987,6 @@ internal object EnumMapBitsetFileGenerator {
             types = listOf(
                 immutableInterface,
                 mutableInterface,
-                privateBitsetBasedInterface,
                 immutableImpl,
                 mutableImpl,
             ),

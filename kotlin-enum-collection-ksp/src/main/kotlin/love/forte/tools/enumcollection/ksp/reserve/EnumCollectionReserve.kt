@@ -16,9 +16,11 @@ import java.time.Instant
 import java.time.ZoneOffset
 import java.time.format.DateTimeFormatter
 import java.time.format.FormatStyle
+import java.util.Locale
 
 private val DATETIME_FORMATTER: DateTimeFormatter = DateTimeFormatter
     .ofLocalizedDateTime(FormatStyle.FULL)
+    .withLocale(Locale.ROOT)
     .withZone(ZoneOffset.UTC)
 
 /**

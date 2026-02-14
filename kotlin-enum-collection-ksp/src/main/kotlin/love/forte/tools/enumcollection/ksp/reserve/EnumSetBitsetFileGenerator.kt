@@ -80,12 +80,6 @@ internal object EnumSetBitsetFileGenerator {
             }
         }
 
-        val privateBitsetInterface = KotlinSimpleTypeSpec(KotlinTypeSpec.Kind.INTERFACE, "BitsetBased") {
-            addModifier(KotlinModifier.PRIVATE)
-            addProperty(KotlinPropertySpec("bs", bitsetTypeRef))
-        }
-        val bitsetBasedType = ClassName(packageName, "BitsetBased")
-
         val immutableInterface = KotlinSimpleTypeSpec(KotlinTypeSpec.Kind.INTERFACE, immutableInterfaceName) {
             applyVisibility(visibility)
             addDoc("An enum-specialized set optimized for [$enumRef].")
@@ -294,7 +288,6 @@ internal object EnumSetBitsetFileGenerator {
                 KotlinConstructorSpec {
                     addParameter(
                         KotlinValueParameterSpec("bs", bitsetTypeRef) {
-                            addModifier(KotlinModifier.OVERRIDE)
                             immutableProperty()
                         }
                     )
@@ -302,7 +295,6 @@ internal object EnumSetBitsetFileGenerator {
             )
 
             addSuperinterface(immutableType)
-            addSuperinterface(bitsetBasedType)
 
             addFunction(
                 KotlinFunctionSpec("contains", KotlinClassNames.BOOLEAN.ref()) {
@@ -322,7 +314,10 @@ internal object EnumSetBitsetFileGenerator {
                             addStatement("if (elements.isEmpty()) return true")
                             addStatement("val currentBits = bs")
                             addStatement("if (currentBits == 0${if (bitsetKind == BitsetKind.I64) "L" else ""}) return false")
-                            beginControlFlow("if (elements is BitsetBased)")
+                            beginControlFlow("if (elements is $implName)")
+                            addStatement("return (currentBits and elements.bs) == elements.bs")
+                            endControlFlow()
+                            beginControlFlow("if (elements is $mutableImplName)")
                             addStatement("return (currentBits and elements.bs) == elements.bs")
                             endControlFlow()
                             beginControlFlow("if (elements is Set<*> && elements.size > currentBits.countOneBits())")
@@ -346,7 +341,10 @@ internal object EnumSetBitsetFileGenerator {
                             addStatement("if (elements.isEmpty()) return false")
                             addStatement("val currentBits = bs")
                             addStatement("if (currentBits == 0${if (bitsetKind == BitsetKind.I64) "L" else ""}) return false")
-                            beginControlFlow("if (elements is BitsetBased)")
+                            beginControlFlow("if (elements is $implName)")
+                            addStatement("return (currentBits and elements.bs) != 0${if (bitsetKind == BitsetKind.I64) "L" else ""}")
+                            endControlFlow()
+                            beginControlFlow("if (elements is $mutableImplName)")
                             addStatement("return (currentBits and elements.bs) != 0${if (bitsetKind == BitsetKind.I64) "L" else ""}")
                             endControlFlow()
                             beginControlFlow("for (element in elements)")
@@ -367,7 +365,12 @@ internal object EnumSetBitsetFileGenerator {
                             addStatement("val currentBits = bs")
                             addStatement("if (currentBits == 0${if (bitsetKind == BitsetKind.I64) "L" else ""} || other.isEmpty()) return EMPTY")
                             addStatement("if (other === this) return this")
-                            beginControlFlow("if (other is BitsetBased)")
+                            beginControlFlow("if (other is $implName)")
+                            addStatement("val intersectBits = currentBits and other.bs")
+                            addStatement("if (intersectBits == currentBits) return this")
+                            addStatement("return createEnumSet(intersectBits)")
+                            endControlFlow()
+                            beginControlFlow("if (other is $mutableImplName)")
                             addStatement("val intersectBits = currentBits and other.bs")
                             addStatement("if (intersectBits == currentBits) return this")
                             addStatement("return createEnumSet(intersectBits)")
@@ -405,7 +408,12 @@ internal object EnumSetBitsetFileGenerator {
                             addStatement("val currentBits = bs")
                             addStatement("if (other.isEmpty()) return this")
                             addStatement("if (other === this) return this")
-                            beginControlFlow("if (other is BitsetBased)")
+                            beginControlFlow("if (other is $implName)")
+                            addStatement("val mergedBits = currentBits or other.bs")
+                            addStatement("if (mergedBits == currentBits) return this")
+                            addStatement("return createEnumSet(mergedBits)")
+                            endControlFlow()
+                            beginControlFlow("if (other is $mutableImplName)")
                             addStatement("val mergedBits = currentBits or other.bs")
                             addStatement("if (mergedBits == currentBits) return this")
                             addStatement("return createEnumSet(mergedBits)")
@@ -430,7 +438,12 @@ internal object EnumSetBitsetFileGenerator {
                             addStatement("val currentBits = bs")
                             addStatement("if (currentBits == 0${if (bitsetKind == BitsetKind.I64) "L" else ""} || other.isEmpty()) return this")
                             addStatement("if (other === this) return EMPTY")
-                            beginControlFlow("if (other is BitsetBased)")
+                            beginControlFlow("if (other is $implName)")
+                            addStatement("val differenceBits = currentBits and other.bs.inv()")
+                            addStatement("if (differenceBits == currentBits) return this")
+                            addStatement("return createEnumSet(differenceBits)")
+                            endControlFlow()
+                            beginControlFlow("if (other is $mutableImplName)")
                             addStatement("val differenceBits = currentBits and other.bs.inv()")
                             addStatement("if (differenceBits == currentBits) return this")
                             addStatement("return createEnumSet(differenceBits)")
@@ -499,7 +512,10 @@ internal object EnumSetBitsetFileGenerator {
                         CodeValue {
                             addStatement("if (this === other) return true")
                             addStatement("if (other !is Set<*>) return false")
-                            beginControlFlow("if (other is BitsetBased)")
+                            beginControlFlow("if (other is $implName)")
+                            addStatement("return bs == other.bs")
+                            endControlFlow()
+                            beginControlFlow("if (other is $mutableImplName)")
                             addStatement("return bs == other.bs")
                             endControlFlow()
                             addStatement("val currentBits = bs")
@@ -541,7 +557,6 @@ internal object EnumSetBitsetFileGenerator {
                 KotlinConstructorSpec {
                     addParameter(
                         KotlinValueParameterSpec("bs", bitsetTypeRef) {
-                            addModifier(KotlinModifier.OVERRIDE)
                             mutableProperty()
                         }
                     )
@@ -549,7 +564,6 @@ internal object EnumSetBitsetFileGenerator {
             )
 
             addSuperinterface(mutableType)
-            addSuperinterface(bitsetBasedType)
 
             addFunction(
                 KotlinFunctionSpec("copy", mutableType.ref()) {
@@ -576,7 +590,10 @@ internal object EnumSetBitsetFileGenerator {
                             addStatement("if (elements.isEmpty()) return true")
                             addStatement("val currentBits = bs")
                             addStatement("if (currentBits == 0${if (bitsetKind == BitsetKind.I64) "L" else ""}) return false")
-                            beginControlFlow("if (elements is BitsetBased)")
+                            beginControlFlow("if (elements is $implName)")
+                            addStatement("return (currentBits and elements.bs) == elements.bs")
+                            endControlFlow()
+                            beginControlFlow("if (elements is $mutableImplName)")
                             addStatement("return (currentBits and elements.bs) == elements.bs")
                             endControlFlow()
                             beginControlFlow("if (elements is Set<*> && elements.size > currentBits.countOneBits())")
@@ -600,7 +617,10 @@ internal object EnumSetBitsetFileGenerator {
                             addStatement("if (elements.isEmpty()) return false")
                             addStatement("val currentBits = bs")
                             addStatement("if (currentBits == 0${if (bitsetKind == BitsetKind.I64) "L" else ""}) return false")
-                            beginControlFlow("if (elements is BitsetBased)")
+                            beginControlFlow("if (elements is $implName)")
+                            addStatement("return (currentBits and elements.bs) != 0${if (bitsetKind == BitsetKind.I64) "L" else ""}")
+                            endControlFlow()
+                            beginControlFlow("if (elements is $mutableImplName)")
                             addStatement("return (currentBits and elements.bs) != 0${if (bitsetKind == BitsetKind.I64) "L" else ""}")
                             endControlFlow()
                             beginControlFlow("for (element in elements)")
@@ -622,7 +642,10 @@ internal object EnumSetBitsetFileGenerator {
                             addStatement("val currentBits = bs")
                             addStatement("if (currentBits == 0${if (bitsetKind == BitsetKind.I64) "L" else ""} || other.isEmpty()) return EMPTY")
                             addStatement("if (other === this) return createEnumSet(currentBits)")
-                            beginControlFlow("if (other is BitsetBased)")
+                            beginControlFlow("if (other is $implName)")
+                            addStatement("return createEnumSet(currentBits and other.bs)")
+                            endControlFlow()
+                            beginControlFlow("if (other is $mutableImplName)")
                             addStatement("return createEnumSet(currentBits and other.bs)")
                             endControlFlow()
                             addStatement("var intersectBits = 0${if (bitsetKind == BitsetKind.I64) "L" else ""}")
@@ -657,7 +680,10 @@ internal object EnumSetBitsetFileGenerator {
                             addStatement("val currentBits = bs")
                             addStatement("if (other.isEmpty()) return createEnumSet(currentBits)")
                             addStatement("if (other === this) return createEnumSet(currentBits)")
-                            beginControlFlow("if (other is BitsetBased)")
+                            beginControlFlow("if (other is $implName)")
+                            addStatement("return createEnumSet(currentBits or other.bs)")
+                            endControlFlow()
+                            beginControlFlow("if (other is $mutableImplName)")
                             addStatement("return createEnumSet(currentBits or other.bs)")
                             endControlFlow()
                             addStatement("var mergedBits = currentBits")
@@ -679,7 +705,10 @@ internal object EnumSetBitsetFileGenerator {
                             addStatement("val currentBits = bs")
                             addStatement("if (currentBits == 0${if (bitsetKind == BitsetKind.I64) "L" else ""} || other.isEmpty()) return createEnumSet(currentBits)")
                             addStatement("if (other === this) return EMPTY")
-                            beginControlFlow("if (other is BitsetBased)")
+                            beginControlFlow("if (other is $implName)")
+                            addStatement("return createEnumSet(currentBits and other.bs.inv())")
+                            endControlFlow()
+                            beginControlFlow("if (other is $mutableImplName)")
                             addStatement("return createEnumSet(currentBits and other.bs.inv())")
                             endControlFlow()
                             addStatement("var removeMask = 0${if (bitsetKind == BitsetKind.I64) "L" else ""}")
@@ -756,7 +785,12 @@ internal object EnumSetBitsetFileGenerator {
                     addCode(
                         CodeValue {
                             addStatement("if (elements.isEmpty()) return false")
-                            beginControlFlow("if (elements is BitsetBased)")
+                            beginControlFlow("if (elements is $implName)")
+                            addStatement("val oldBits = bs")
+                            addStatement("bs = oldBits or elements.bs")
+                            addStatement("return bs != oldBits")
+                            endControlFlow()
+                            beginControlFlow("if (elements is $mutableImplName)")
                             addStatement("val oldBits = bs")
                             addStatement("bs = oldBits or elements.bs")
                             addStatement("return bs != oldBits")
@@ -801,7 +835,12 @@ internal object EnumSetBitsetFileGenerator {
                     addCode(
                         CodeValue {
                             addStatement("if (elements.isEmpty() || bs == 0${if (bitsetKind == BitsetKind.I64) "L" else ""}) return false")
-                            beginControlFlow("if (elements is BitsetBased)")
+                            beginControlFlow("if (elements is $implName)")
+                            addStatement("val oldBits = bs")
+                            addStatement("bs = oldBits and elements.bs.inv()")
+                            addStatement("return bs != oldBits")
+                            endControlFlow()
+                            beginControlFlow("if (elements is $mutableImplName)")
                             addStatement("val oldBits = bs")
                             addStatement("bs = oldBits and elements.bs.inv()")
                             addStatement("return bs != oldBits")
@@ -827,7 +866,13 @@ internal object EnumSetBitsetFileGenerator {
                         CodeValue {
                             addStatement("val currentBits = bs")
                             addStatement("if (currentBits == 0${if (bitsetKind == BitsetKind.I64) "L" else ""}) return false")
-                            beginControlFlow("if (elements is BitsetBased)")
+                            beginControlFlow("if (elements is $implName)")
+                            addStatement("val retainedBits = currentBits and elements.bs")
+                            addStatement("if (retainedBits == currentBits) return false")
+                            addStatement("bs = retainedBits")
+                            addStatement("return true")
+                            endControlFlow()
+                            beginControlFlow("if (elements is $mutableImplName)")
                             addStatement("val retainedBits = currentBits and elements.bs")
                             addStatement("if (retainedBits == currentBits) return false")
                             addStatement("bs = retainedBits")
@@ -875,7 +920,10 @@ internal object EnumSetBitsetFileGenerator {
                         CodeValue {
                             addStatement("if (this === other) return true")
                             addStatement("if (other !is Set<*>) return false")
-                            beginControlFlow("if (other is BitsetBased)")
+                            beginControlFlow("if (other is $implName)")
+                            addStatement("return bs == other.bs")
+                            endControlFlow()
+                            beginControlFlow("if (other is $mutableImplName)")
                             addStatement("return bs == other.bs")
                             endControlFlow()
                             addStatement("val currentBits = bs")
@@ -914,7 +962,6 @@ internal object EnumSetBitsetFileGenerator {
             types = listOf(
                 immutableInterface,
                 mutableInterface,
-                privateBitsetInterface,
                 immutableImpl,
                 mutableImpl,
             ),

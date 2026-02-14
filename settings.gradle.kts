@@ -24,4 +24,6 @@ include(
     ":kotlin-enum-collection-api",
     ":kotlin-enum-collection-benchmark",
     ":examples",
+    ":examples:kec-api-example",
+    ":examples:kec-ksp-example",
 )
