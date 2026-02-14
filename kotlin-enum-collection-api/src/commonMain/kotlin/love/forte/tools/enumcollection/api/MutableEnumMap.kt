@@ -233,7 +233,7 @@ private class MutableI32EnumMap<E : Enum<E>, V>(
     override fun putAll(from: Map<out E, V>) {
         if (from.isEmpty()) return
 
-        if (from is EnumEntriesBasedI32EnumMap<*, *> && sameMapUniverse(universe, from.universe)) {
+        if (from is EnumEntriesBasedI32EnumMap<*, *> && sameUniverse(universe, from.universe)) {
             @Suppress("UNCHECKED_CAST")
             val source = from as EnumEntriesBasedI32EnumMap<E, V>
             val sourceBits = source.keyBits
@@ -367,7 +367,7 @@ private class MutableI32EnumMap<E : Enum<E>, V>(
         if (size != other.size) return false
 
         if (other is EnumEntriesBasedI32EnumMap<*, *>) {
-            if (!sameMapUniverse(universe, other.universe)) {
+            if (!sameUniverse(universe, other.universe)) {
                 return isEmpty() && other.isEmpty()
             }
 
@@ -481,7 +481,7 @@ private class MutableI64EnumMap<E : Enum<E>, V>(
     override fun putAll(from: Map<out E, V>) {
         if (from.isEmpty()) return
 
-        if (from is EnumEntriesBasedI64EnumMap<*, *> && sameMapUniverse(universe, from.universe)) {
+        if (from is EnumEntriesBasedI64EnumMap<*, *> && sameUniverse(universe, from.universe)) {
             @Suppress("UNCHECKED_CAST")
             val source = from as EnumEntriesBasedI64EnumMap<E, V>
             val sourceBits = source.keyBits
@@ -615,7 +615,7 @@ private class MutableI64EnumMap<E : Enum<E>, V>(
         if (size != other.size) return false
 
         if (other is EnumEntriesBasedI64EnumMap<*, *>) {
-            if (!sameMapUniverse(universe, other.universe)) {
+            if (!sameUniverse(universe, other.universe)) {
                 return isEmpty() && other.isEmpty()
             }
             if (keyBits != other.keyBits) return false
@@ -758,7 +758,7 @@ private class MutableLargeEnumMap<E : Enum<E>, V>(
     override fun putAll(from: Map<out E, V>) {
         if (from.isEmpty()) return
 
-        if (from is EnumEntriesBasedLargeEnumMap<*, *> && sameMapUniverse(universe, from.universe)) {
+        if (from is EnumEntriesBasedLargeEnumMap<*, *> && sameUniverse(universe, from.universe)) {
             @Suppress("UNCHECKED_CAST")
             val source = from as EnumEntriesBasedLargeEnumMap<E, V>
             val sourceWords = source.keyWords
@@ -940,7 +940,7 @@ private class MutableLargeEnumMap<E : Enum<E>, V>(
         if (size != other.size) return false
 
         if (other is EnumEntriesBasedLargeEnumMap<*, *>) {
-            if (!sameMapUniverse(universe, other.universe)) {
+            if (!sameUniverse(universe, other.universe)) {
                 return isEmpty() && other.isEmpty()
             }
 

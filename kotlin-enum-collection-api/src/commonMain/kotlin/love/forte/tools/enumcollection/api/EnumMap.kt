@@ -188,14 +188,6 @@ internal fun <E : Enum<E>, V> createLargeEnumMap(
     return LargeEnumMap(universe, trimmedWords, normalizedSlots)
 }
 
-internal fun sameMapUniverse(left: EnumEntries<*>, right: EnumEntries<*>): Boolean {
-    if (left === right) return true
-    val size = left.size
-    if (size != right.size) return false
-    if (size == 0) return true
-    return left[0] === right[0] && left[size - 1] === right[size - 1]
-}
-
 internal fun mapLastNonZeroWordIndex(words: LongArray): Int {
     var index = words.size - 1
     while (index >= 0 && words[index] == 0L) {
@@ -373,7 +365,7 @@ private class I32EnumMap<E : Enum<E>, V>(
         if (size != other.size) return false
 
         if (other is EnumEntriesBasedI32EnumMap<*, *>) {
-            if (!sameMapUniverse(universe, other.universe)) {
+            if (!sameUniverse(universe, other.universe)) {
                 return isEmpty() && other.isEmpty()
             }
             if (keyBits != other.keyBits) return false
@@ -509,7 +501,7 @@ private class I64EnumMap<E : Enum<E>, V>(
         if (size != other.size) return false
 
         if (other is EnumEntriesBasedI64EnumMap<*, *>) {
-            if (!sameMapUniverse(universe, other.universe)) {
+            if (!sameUniverse(universe, other.universe)) {
                 return isEmpty() && other.isEmpty()
             }
             if (keyBits != other.keyBits) return false
@@ -661,7 +653,7 @@ private class LargeEnumMap<E : Enum<E>, V>(
         if (size != other.size) return false
 
         if (other is EnumEntriesBasedLargeEnumMap<*, *>) {
-            if (!sameMapUniverse(universe, other.universe)) {
+            if (!sameUniverse(universe, other.universe)) {
                 return isEmpty() && other.isEmpty()
             }
 

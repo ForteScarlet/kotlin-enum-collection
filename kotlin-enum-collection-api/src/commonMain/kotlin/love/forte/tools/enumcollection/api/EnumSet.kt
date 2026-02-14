@@ -207,14 +207,6 @@ internal fun <E : Enum<E>> createLargeEnumSet(bs: LongArray, values: EnumEntries
     return LargeEnumSet(words, values)
 }
 
-internal fun sameUniverse(left: EnumEntries<*>, right: EnumEntries<*>): Boolean {
-    if (left === right) return true
-    val size = left.size
-    if (size != right.size) return false
-    if (size == 0) return true
-    return left[0] === right[0] && left[size - 1] === right[size - 1]
-}
-
 internal fun <E : Enum<E>> ordinalInUniverseOrMinusOne(element: Any?, values: EnumEntries<E>): Int {
     if (element !is Enum<*>) return -1
     val ordinal = element.ordinal
