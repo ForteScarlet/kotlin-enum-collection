@@ -3,7 +3,6 @@ package love.forte.tools.enumcollection.ksp.configuration
 internal object ConfigConstants {
     const val CONFIG_PREFIX = "love.forte.tools.enumcollection"
 
-    const val ENUMS_KEY = "enums"
     const val ENUM_SETS_KEY = "enumSets"
     const val ENUM_MAPS_KEY = "enumMaps"
     const val INHERITANCE_MODE_KEY = "inheritanceMode"
