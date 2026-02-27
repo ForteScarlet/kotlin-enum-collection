@@ -6,16 +6,19 @@ import com.google.devtools.ksp.processing.SymbolProcessor
 import com.google.devtools.ksp.processing.SymbolProcessorEnvironment
 import com.google.devtools.ksp.symbol.*
 import com.google.devtools.ksp.validate
+import love.forte.tools.enumcollection.ksp.configuration.ExternalEnumConfiguration
+import love.forte.tools.enumcollection.ksp.configuration.GenMode
 import love.forte.tools.enumcollection.ksp.configuration.KecConfiguration
 import love.forte.tools.enumcollection.ksp.reserve.EnumCollectionReserve
 import love.forte.tools.enumcollection.ksp.reserve.EnumMapReserve
 import love.forte.tools.enumcollection.ksp.reserve.EnumSetReserve
-import java.util.*
 import java.util.concurrent.ConcurrentSkipListSet
 
-private enum class GenMode {
-    SET, MAP
-}
+private data class ConfigDrivenGenerationTarget(
+    val packageName: String,
+    val targetName: String,
+    val visibility: String,
+)
 
 /**
  * KSP processor for generating enum-specialized set/map implementations.
@@ -26,10 +29,10 @@ internal class KecProcessor(
     private val environment: SymbolProcessorEnvironment,
     private val configuration: KecConfiguration
 ) : SymbolProcessor {
-    private val logger = environment.logger
+    private data class ResolvedFromConfigurationIdentity(val name: String, val mode: GenMode)
 
-    private val resolvedFromConfiguration: EnumMap<GenMode, ConcurrentSkipListSet<String>> =
-        EnumMap(GenMode.entries.associateWith { ConcurrentSkipListSet<String>() })
+    private val logger = environment.logger
+    private val resolvedFromConfiguration = ConcurrentSkipListSet<ResolvedFromConfigurationIdentity>()
 
     override fun process(resolver: Resolver): List<KSAnnotated> {
         val reserves = mutableListOf<EnumCollectionReserve>()
@@ -37,7 +40,7 @@ internal class KecProcessor(
         val invalidates = mutableSetOf<KSAnnotated>()
 
         fun addReserve(reserve: EnumCollectionReserve, origin: KSAnnotated?) {
-            val fqName = "${reserve.enumDetail.packageName}.${reserve.targetName}"
+            val fqName = buildGeneratedTypeFqName(reserve.generatedPackageName, reserve.targetName)
             if (!generatedTypeNames.add(fqName)) {
                 logger.warn("Duplicate generated type: $fqName", origin)
                 return
@@ -45,19 +48,23 @@ internal class KecProcessor(
             reserves.add(reserve)
         }
 
-        // Config-driven enumSets/enumMaps (generate both Set/Map with defaults).
-        fun addReserveFromConfiguration(enumClassName: String, mode: GenMode) {
-            if (enumClassName in resolvedFromConfiguration[mode]!!) {
+        // Config-driven enumSets/enumMaps.
+        fun addReserveFromConfiguration(externalConfiguration: ExternalEnumConfiguration) {
+            val configIdentity = ResolvedFromConfigurationIdentity(externalConfiguration.enumQualifiedName, externalConfiguration.mode)
+            if (configIdentity in resolvedFromConfiguration) {
                 return
             }
 
-            val declaration = resolver.getClassDeclarationByName(enumClassName)
+            val declaration = resolver.getClassDeclarationByName(externalConfiguration.enumQualifiedName)
             if (declaration == null) {
-                logger.warn("Configured enum type not found: $enumClassName")
+                logger.warn("Configured enum type not found: ${externalConfiguration.enumQualifiedName}")
                 return
             }
             if (declaration.classKind != ClassKind.ENUM_CLASS) {
-                logger.error("Configured type is not an enum class: $enumClassName", declaration)
+                logger.error(
+                    "Configured type is not an enum class: ${externalConfiguration.enumQualifiedName}",
+                    declaration
+                )
                 return
             }
 
@@ -68,14 +75,16 @@ internal class KecProcessor(
 
             val enumDetail = declaration.toEnumDetail()
             val sources = declaration.containingFile?.let(::setOf) ?: emptySet()
+            val generationTarget = resolveConfigDrivenTarget(externalConfiguration, enumDetail)
 
-            when (mode) {
+            when (externalConfiguration.mode) {
                 GenMode.SET -> {
                     addReserve(
                         EnumSetReserve(
                             sources = sources,
-                            targetName = "${enumDetail.simpleName}EnumSet",
-                            visibility = "INTERNAL",
+                            targetName = generationTarget.targetName,
+                            visibility = generationTarget.visibility,
+                            generatedPackageName = generationTarget.packageName,
                             enumDetail = enumDetail
                         ),
                         declaration
@@ -86,22 +95,21 @@ internal class KecProcessor(
                     addReserve(
                         EnumMapReserve(
                             sources = sources,
-                            targetName = "${enumDetail.simpleName}EnumMap",
-                            visibility = "INTERNAL",
+                            targetName = generationTarget.targetName,
+                            visibility = generationTarget.visibility,
+                            generatedPackageName = generationTarget.packageName,
                             enumDetail = enumDetail
                         ),
                         declaration
                     )
                 }
             }
+
+            resolvedFromConfiguration.add(configIdentity)
         }
 
-        for (enumClass in configuration.enumSets) {
-            addReserveFromConfiguration(enumClassName = enumClass, mode = GenMode.SET)
-        }
-
-        for (enumClass in configuration.enumMaps) {
-            addReserveFromConfiguration(enumClassName = enumClass, mode = GenMode.MAP)
+        for (externalConfiguration in configuration.externalEnumConfigurations) {
+            addReserveFromConfiguration(externalConfiguration)
         }
 
         val enumSetGrouped = resolver.getSymbolsWithAnnotation(AnnotationTypes.ENUM_SET_ANNOTATION_QUALIFY)
@@ -157,6 +165,7 @@ internal class KecProcessor(
                     sources = sources,
                     targetName = targetName,
                     visibility = visibility,
+                    generatedPackageName = enumDetail.packageName,
                     enumDetail = enumDetail
                 ),
                 declaration
@@ -198,11 +207,70 @@ internal class KecProcessor(
                     sources = sources,
                     targetName = targetName,
                     visibility = visibility,
+                    generatedPackageName = enumDetail.packageName,
                     enumDetail = enumDetail
                 ),
                 declaration
             )
         }
+    }
+
+    private fun resolveConfigDrivenTarget(
+        externalConfiguration: ExternalEnumConfiguration,
+        enumDetail: EnumDetail,
+    ): ConfigDrivenGenerationTarget {
+        val defaultName = when (externalConfiguration.mode) {
+            GenMode.SET -> "${enumDetail.simpleName}EnumSet"
+            GenMode.MAP -> "${enumDetail.simpleName}EnumMap"
+        }
+
+        val packageName = externalConfiguration.packageName
+            ?: configuration.basePackage
+            ?: enumDetail.packageName
+
+        val targetName = externalConfiguration.name ?: defaultName
+
+        val visibility = normalizeVisibility(
+            rawVisibility = externalConfiguration.visibility ?: configuration.baseVisibility,
+            fallback = KecConfiguration.DEFAULT_BASE_VISIBILITY,
+            optionName = buildString {
+                append("love.forte.tools.enumcollection.")
+                if (externalConfiguration.visibility != null) {
+                    append(externalConfiguration.enumQualifiedName)
+                    append(".visibility")
+                } else {
+                    append("baseVisibility")
+                }
+            }
+        )
+
+        return ConfigDrivenGenerationTarget(
+            packageName = packageName,
+            targetName = targetName,
+            visibility = visibility,
+        )
+    }
+
+    private fun normalizeVisibility(rawVisibility: String?, fallback: String, optionName: String): String {
+        val normalized = rawVisibility?.trim()?.takeIf { it.isNotEmpty() }?.uppercase() ?: fallback
+        return when (normalized) {
+            "PUBLIC",
+            "INTERNAL",
+            "PRIVATE",
+            -> normalized
+
+            else -> {
+                logger.warn(
+                    "Unsupported visibility value '$normalized' for option '$optionName'. " +
+                            "Fallback to '$fallback'."
+                )
+                fallback
+            }
+        }
+    }
+
+    private fun buildGeneratedTypeFqName(packageName: String, targetName: String): String {
+        return if (packageName.isBlank()) targetName else "$packageName.$targetName"
     }
 
     private fun KSClassDeclaration.toEnumDetail(): EnumDetail {

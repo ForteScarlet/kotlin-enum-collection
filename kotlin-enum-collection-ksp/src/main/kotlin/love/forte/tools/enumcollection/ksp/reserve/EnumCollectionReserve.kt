@@ -35,6 +35,11 @@ internal abstract class EnumCollectionReserve {
 
     abstract val visibility: String
 
+    /**
+     * Package where generated declarations should be emitted.
+     */
+    abstract val generatedPackageName: String
+
     abstract val enumDetail: EnumDetail
 
     /**
@@ -51,7 +56,7 @@ internal abstract class EnumCollectionReserve {
         val fileSpec = generateFileSpec(apiInterfaceAvailable, configuration.inheritanceMode)
 
         val kotlinFile = KotlinFile(
-            packageNamePaths = enumDetail.packageName,
+            packageNamePaths = generatedPackageName,
             types = fileSpec.types,
         ) {
             name(targetName)

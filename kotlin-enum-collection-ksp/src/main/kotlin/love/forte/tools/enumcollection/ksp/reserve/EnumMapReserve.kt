@@ -20,6 +20,7 @@ internal class EnumMapReserve(
     override val sources: Set<KSFile>,
     override val targetName: String,
     override val visibility: String,
+    override val generatedPackageName: String,
     override val enumDetail: EnumDetail,
 ) : EnumCollectionReserve() {
 
@@ -39,6 +40,7 @@ internal class EnumMapReserve(
                 enumDetail = enumDetail,
                 targetName = targetName,
                 visibility = visibility,
+                generatedPackageName = generatedPackageName,
                 enumType = enumType,
                 enumRef = enumRef,
                 enumSize = entrySize,
@@ -50,6 +52,7 @@ internal class EnumMapReserve(
                 enumDetail = enumDetail,
                 targetName = targetName,
                 visibility = visibility,
+                generatedPackageName = generatedPackageName,
                 enumType = enumType,
                 enumRef = enumRef,
                 enumSize = entrySize,
@@ -61,6 +64,7 @@ internal class EnumMapReserve(
                 enumDetail = enumDetail,
                 targetName = targetName,
                 visibility = visibility,
+                generatedPackageName = generatedPackageName,
                 enumType = enumType,
                 enumRef = enumRef,
                 enumSize = entrySize,

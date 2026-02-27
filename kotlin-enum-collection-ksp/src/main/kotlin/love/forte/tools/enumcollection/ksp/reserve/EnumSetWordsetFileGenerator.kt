@@ -31,12 +31,13 @@ internal object EnumSetWordsetFileGenerator {
         enumDetail: EnumDetail,
         targetName: String,
         visibility: String,
+        generatedPackageName: String,
         enumType: ClassName,
         enumRef: String,
         enumSize: Int,
         inheritApi: Boolean,
     ): FileSpec {
-        val packageName = enumDetail.packageName.ifBlank { null }
+        val packageName = generatedPackageName.ifBlank { null }
         val keyTypeRef = enumType.ref()
         val longArrayTypeRef = ClassName("kotlin", "LongArray").ref()
 
@@ -54,13 +55,13 @@ internal object EnumSetWordsetFileGenerator {
         val setTypeRef = setType.ref()
         val iterableTypeRef = KotlinClassNames.ITERABLE.parameterized(keyTypeRef).ref()
 
-	    	val superImmutable = if (inheritApi) API_ENUM_SET.parameterized(keyTypeRef) else setType
-	    	val superMutable = if (inheritApi) API_MUTABLE_ENUM_SET.parameterized(keyTypeRef) else mutableSetType
+        val superImmutable = if (inheritApi) API_ENUM_SET.parameterized(keyTypeRef) else setType
+        val superMutable = if (inheritApi) API_MUTABLE_ENUM_SET.parameterized(keyTypeRef) else mutableSetType
 
-	    	val immutableInterface = KotlinSimpleTypeSpec(KotlinTypeSpec.Kind.INTERFACE, immutableInterfaceName) {
-	    	    applyVisibility(visibility)
-	    	    addDoc("An enum-specialized set optimized for [$enumRef].")
-	    	    addSuperinterface(superImmutable)
+        val immutableInterface = KotlinSimpleTypeSpec(KotlinTypeSpec.Kind.INTERFACE, immutableInterfaceName) {
+            applyVisibility(visibility)
+            addDoc("An enum-specialized set optimized for [$enumRef].")
+            addSuperinterface(superImmutable)
             if (!inheritApi) {
                 addFunction(
                     KotlinFunctionSpec("containsAny", KotlinClassNames.BOOLEAN.ref()) {

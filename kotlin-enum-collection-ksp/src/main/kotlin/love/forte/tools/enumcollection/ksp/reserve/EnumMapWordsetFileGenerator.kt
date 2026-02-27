@@ -35,12 +35,13 @@ internal object EnumMapWordsetFileGenerator {
         enumDetail: EnumDetail,
         targetName: String,
         visibility: String,
+        generatedPackageName: String,
         enumType: ClassName,
         enumRef: String,
         enumSize: Int,
         inheritApi: Boolean,
     ): FileSpec {
-        val packageName = enumDetail.packageName.ifBlank { null }
+        val packageName = generatedPackageName.ifBlank { null }
         val keyTypeRef = enumType.ref()
         val valueTypeVar = TypeVariableName("V").ref()
 

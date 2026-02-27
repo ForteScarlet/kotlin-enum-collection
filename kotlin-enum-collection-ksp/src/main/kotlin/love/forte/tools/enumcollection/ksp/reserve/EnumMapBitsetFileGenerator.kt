@@ -40,13 +40,14 @@ internal object EnumMapBitsetFileGenerator {
         enumDetail: EnumDetail,
         targetName: String,
         visibility: String,
+        generatedPackageName: String,
         enumType: ClassName,
         enumRef: String,
         enumSize: Int,
         inheritApi: Boolean,
         bitsetKind: BitsetKind,
     ): FileSpec {
-        val packageName = enumDetail.packageName.ifBlank { null }
+        val packageName = generatedPackageName.ifBlank { null }
         val keyTypeRef = enumType.ref()
         val valueTypeVar = TypeVariableName("V").ref()
 
