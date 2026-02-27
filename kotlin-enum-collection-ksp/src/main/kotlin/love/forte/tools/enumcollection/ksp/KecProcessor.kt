@@ -4,17 +4,18 @@ import com.google.devtools.ksp.getClassDeclarationByName
 import com.google.devtools.ksp.processing.Resolver
 import com.google.devtools.ksp.processing.SymbolProcessor
 import com.google.devtools.ksp.processing.SymbolProcessorEnvironment
-import com.google.devtools.ksp.symbol.ClassKind
-import com.google.devtools.ksp.symbol.KSAnnotated
-import com.google.devtools.ksp.symbol.KSAnnotation
-import com.google.devtools.ksp.symbol.KSClassDeclaration
-import com.google.devtools.ksp.symbol.KSName
-import com.google.devtools.ksp.symbol.KSType
+import com.google.devtools.ksp.symbol.*
 import com.google.devtools.ksp.validate
 import love.forte.tools.enumcollection.ksp.configuration.KecConfiguration
 import love.forte.tools.enumcollection.ksp.reserve.EnumCollectionReserve
 import love.forte.tools.enumcollection.ksp.reserve.EnumMapReserve
 import love.forte.tools.enumcollection.ksp.reserve.EnumSetReserve
+import java.util.*
+import java.util.concurrent.ConcurrentSkipListSet
+
+private enum class GenMode {
+    SET, MAP
+}
 
 /**
  * KSP processor for generating enum-specialized set/map implementations.
@@ -27,56 +28,85 @@ internal class KecProcessor(
 ) : SymbolProcessor {
     private val logger = environment.logger
 
+    private val resolvedFromConfiguration: EnumMap<GenMode, ConcurrentSkipListSet<String>> =
+        EnumMap(GenMode.entries.associateWith { ConcurrentSkipListSet<String>() })
+
     override fun process(resolver: Resolver): List<KSAnnotated> {
         val reserves = mutableListOf<EnumCollectionReserve>()
         val generatedTypeNames = mutableSetOf<String>()
+        val invalidates = mutableSetOf<KSAnnotated>()
 
         fun addReserve(reserve: EnumCollectionReserve, origin: KSAnnotated?) {
             val fqName = "${reserve.enumDetail.packageName}.${reserve.targetName}"
             if (!generatedTypeNames.add(fqName)) {
-                logger.error("Duplicate generated type: $fqName", origin)
+                logger.warn("Duplicate generated type: $fqName", origin)
                 return
             }
             reserves.add(reserve)
         }
 
-        // Config-driven enums (generate both Set/Map with defaults).
-        for (enumClass in configuration.enums) {
-            val declaration = resolver.getClassDeclarationByName(enumClass)
+        // Config-driven enumSets/enumMaps (generate both Set/Map with defaults).
+        fun addReserveFromConfiguration(enumClassName: String, mode: GenMode) {
+            if (enumClassName in resolvedFromConfiguration[mode]!!) {
+                return
+            }
+
+            val declaration = resolver.getClassDeclarationByName(enumClassName)
             if (declaration == null) {
-                logger.warn("Configured enum type not found: $enumClass")
-                continue
+                logger.warn("Configured enum type not found: $enumClassName")
+                return
             }
             if (declaration.classKind != ClassKind.ENUM_CLASS) {
-                logger.error("Configured type is not an enum class: $enumClass", declaration)
-                continue
+                logger.error("Configured type is not an enum class: $enumClassName", declaration)
+                return
+            }
+
+            if (!declaration.validate()) {
+                invalidates.add(declaration)
+                return
             }
 
             val enumDetail = declaration.toEnumDetail()
             val sources = declaration.containingFile?.let(::setOf) ?: emptySet()
 
-            addReserve(
-                EnumSetReserve(
-                    sources = sources,
-                    targetName = "${enumDetail.simpleName}EnumSet",
-                    visibility = "INTERNAL",
-                    enumDetail = enumDetail
-                ),
-                declaration
-            )
-            addReserve(
-                EnumMapReserve(
-                    sources = sources,
-                    targetName = "${enumDetail.simpleName}EnumMap",
-                    visibility = "INTERNAL",
-                    enumDetail = enumDetail
-                ),
-                declaration
-            )
+            when (mode) {
+                GenMode.SET -> {
+                    addReserve(
+                        EnumSetReserve(
+                            sources = sources,
+                            targetName = "${enumDetail.simpleName}EnumSet",
+                            visibility = "INTERNAL",
+                            enumDetail = enumDetail
+                        ),
+                        declaration
+                    )
+                }
+
+                GenMode.MAP -> {
+                    addReserve(
+                        EnumMapReserve(
+                            sources = sources,
+                            targetName = "${enumDetail.simpleName}EnumMap",
+                            visibility = "INTERNAL",
+                            enumDetail = enumDetail
+                        ),
+                        declaration
+                    )
+                }
+            }
+        }
+
+        for (enumClass in configuration.enumSets) {
+            addReserveFromConfiguration(enumClassName = enumClass, mode = GenMode.SET)
+        }
+
+        for (enumClass in configuration.enumMaps) {
+            addReserveFromConfiguration(enumClassName = enumClass, mode = GenMode.MAP)
         }
 
         val enumSetGrouped = resolver.getSymbolsWithAnnotation(AnnotationTypes.ENUM_SET_ANNOTATION_QUALIFY)
             .groupBy { it.validate() }
+
         val enumMapGrouped = resolver.getSymbolsWithAnnotation(AnnotationTypes.ENUM_MAP_ANNOTATION_QUALIFY)
             .groupBy { it.validate() }
 
@@ -87,8 +117,10 @@ internal class KecProcessor(
             reserve.generate(resolver, environment, configuration)
         }
 
-        val deferred = (enumSetGrouped[false] ?: emptyList()) + (enumMapGrouped[false] ?: emptyList())
-        return deferred
+        invalidates.addAll(enumSetGrouped[false] ?: emptyList())
+        invalidates.addAll(enumMapGrouped[false] ?: emptyList())
+
+        return invalidates.toList()
     }
 
     private fun resolveEnumSets(
@@ -98,11 +130,18 @@ internal class KecProcessor(
         for (annotated in enumSetAnnotatedList) {
             val declaration = annotated as? KSClassDeclaration
             if (declaration == null) {
-                logger.error("@EnumSet can only be applied to enum classes.", annotated)
+                logger.error(
+                    "@EnumSet can only be applied to enum classes, but [$annotated] can not be a KSClassDeclaration",
+                    annotated
+                )
                 continue
             }
             if (declaration.classKind != ClassKind.ENUM_CLASS) {
-                logger.error("@EnumSet can only be applied to enum classes.", declaration)
+                logger.error(
+                    "@EnumSet can only be applied to enum classes, but [$annotated] is not an ENUM_CLASS, " +
+                            "it's ${declaration.classKind}",
+                    declaration
+                )
                 continue
             }
 
@@ -132,11 +171,18 @@ internal class KecProcessor(
         for (annotated in enumMapAnnotatedList) {
             val declaration = annotated as? KSClassDeclaration
             if (declaration == null) {
-                logger.error("@EnumMap can only be applied to enum classes.", annotated)
+                logger.error(
+                    "@EnumMap can only be applied to enum classes, but [$annotated] can not be a KSClassDeclaration",
+                    annotated
+                )
                 continue
             }
             if (declaration.classKind != ClassKind.ENUM_CLASS) {
-                logger.error("@EnumMap can only be applied to enum classes.", declaration)
+                logger.error(
+                    "@EnumMap can only be applied to enum classes, but [$annotated] is not an ENUM_CLASS, " +
+                            "it's ${declaration.classKind}",
+                    declaration
+                )
                 continue
             }
 
