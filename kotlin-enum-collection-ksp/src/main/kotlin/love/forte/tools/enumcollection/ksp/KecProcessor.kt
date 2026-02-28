@@ -76,7 +76,9 @@ internal class KecProcessor(
             }
 
             val enumDetail = declaration.toEnumDetail()
-            val sources = declaration.containingFile?.let(::setOf) ?: emptySet()
+            val sources = declaration.containingFile
+                ?.takeIf { it.isSourceFile }
+                ?.let(::setOf) ?: emptySet()
             val generationTarget = resolveConfigDrivenTarget(externalConfiguration, enumDetail)
 
             when (externalConfiguration.mode) {
@@ -160,7 +162,9 @@ internal class KecProcessor(
             val name = annotation?.stringArgument("name").orEmpty()
             val targetName = name.ifBlank { "${enumDetail.simpleName}EnumSet" }
             val visibility = annotation?.enumArgumentSimpleName("visibility")?.uppercase() ?: "INTERNAL"
-            val sources = declaration.containingFile?.let(::setOf) ?: emptySet()
+            val sources = declaration.containingFile
+                ?.takeIf { it.isSourceFile }
+                ?.let(::setOf) ?: emptySet()
 
             addReserve(
                 EnumSetReserve(
@@ -202,7 +206,9 @@ internal class KecProcessor(
             val name = annotation?.stringArgument("name").orEmpty()
             val targetName = name.ifBlank { "${enumDetail.simpleName}EnumMap" }
             val visibility = annotation?.enumArgumentSimpleName("visibility")?.uppercase() ?: "INTERNAL"
-            val sources = declaration.containingFile?.let(::setOf) ?: emptySet()
+            val sources = declaration.containingFile
+                ?.takeIf { it.isSourceFile }
+                ?.let(::setOf) ?: emptySet()
 
             addReserve(
                 EnumMapReserve(
@@ -311,3 +317,12 @@ private fun enumValueSimpleName(value: Any?): String? = when (value) {
     is String -> value.substringAfterLast('.')
     else -> value?.toString()?.substringAfterLast('.')
 }
+
+internal val KSFile.isSourceFile: Boolean
+    get() = location is FileLocation && (isKotlinSourceFile || isJavaSourceFile)
+
+private val KSFile.isKotlinSourceFile: Boolean
+    get() = origin == Origin.KOTLIN
+
+private val KSFile.isJavaSourceFile: Boolean
+    get() = origin == Origin.JAVA
