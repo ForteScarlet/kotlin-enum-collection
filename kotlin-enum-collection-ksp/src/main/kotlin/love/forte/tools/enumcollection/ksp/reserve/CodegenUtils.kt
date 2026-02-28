@@ -21,6 +21,12 @@ internal fun KotlinModifierCollector<*>.applyVisibility(visibility: String) {
     }
 }
 
+internal fun KotlinModifierCollector<*>.applyMemberVisibility(visibility: String) {
+    if (visibility.equals(KotlinModifier.PUBLIC.name, ignoreCase = true)) {
+        addModifier(KotlinModifier.PUBLIC)
+    }
+}
+
 internal fun shouldInheritApiType(inheritanceMode: InheritanceMode, inheritanceAvailable: Boolean): Boolean =
     when (inheritanceMode) {
         InheritanceMode.ALWAYS -> true

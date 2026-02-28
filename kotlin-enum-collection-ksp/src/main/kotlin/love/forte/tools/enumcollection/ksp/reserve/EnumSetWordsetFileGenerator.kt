@@ -65,21 +65,25 @@ internal object EnumSetWordsetFileGenerator {
             if (!inheritApi) {
                 addFunction(
                     KotlinFunctionSpec("containsAny", KotlinClassNames.BOOLEAN.ref()) {
+                        applyMemberVisibility(visibility)
                         addParameter(KotlinValueParameterSpec("elements", collectionTypeRef))
                     }
                 )
                 addFunction(
                     KotlinFunctionSpec("intersect", setTypeRef) {
+                        applyMemberVisibility(visibility)
                         addParameter(KotlinValueParameterSpec("other", setTypeRef))
                     }
                 )
                 addFunction(
                     KotlinFunctionSpec("union", setTypeRef) {
+                        applyMemberVisibility(visibility)
                         addParameter(KotlinValueParameterSpec("other", setTypeRef))
                     }
                 )
                 addFunction(
                     KotlinFunctionSpec("difference", setTypeRef) {
+                        applyMemberVisibility(visibility)
                         addParameter(KotlinValueParameterSpec("other", setTypeRef))
                     }
                 )
@@ -94,6 +98,7 @@ internal object EnumSetWordsetFileGenerator {
             addFunction(
                 KotlinFunctionSpec("copy", mutableType.ref()) {
                     overrideIf(inheritApi)
+                    applyMemberVisibility(visibility)
                 }
             )
         }

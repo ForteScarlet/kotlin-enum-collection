@@ -114,6 +114,7 @@ internal object EnumMapBitsetFileGenerator {
             addFunction(
                 KotlinFunctionSpec("copy", mutableTypeRef) {
                     overrideIf(inheritApi)
+                    applyMemberVisibility(visibility)
                 }
             )
         }

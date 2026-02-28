@@ -93,6 +93,7 @@ internal object EnumMapWordsetFileGenerator {
             addFunction(
                 KotlinFunctionSpec("copy", mutableTypeRef) {
                     overrideIf(inheritApi)
+                    applyMemberVisibility(visibility)
                 }
             )
         }
