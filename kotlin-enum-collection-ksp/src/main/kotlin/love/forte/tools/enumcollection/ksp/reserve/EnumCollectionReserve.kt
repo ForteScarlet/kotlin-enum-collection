@@ -13,7 +13,9 @@ import love.forte.tools.enumcollection.ksp.EnumDetail
 import love.forte.tools.enumcollection.ksp.configuration.InheritanceMode
 import love.forte.tools.enumcollection.ksp.configuration.KecConfiguration
 import java.time.Instant
+import java.time.ZoneId
 import java.time.ZoneOffset
+import java.time.ZonedDateTime
 import java.time.format.DateTimeFormatter
 import java.time.format.FormatStyle
 import java.util.Locale
@@ -60,8 +62,8 @@ internal abstract class EnumCollectionReserve {
             types = fileSpec.types,
         ) {
             name(targetName)
-            val time = DATETIME_FORMATTER.format(Instant.now())
-            addFileComment("Auto-Generated at $time (UTC). Do not modify!")
+            val time = DATETIME_FORMATTER.format(ZonedDateTime.now(ZoneOffset.UTC))
+            addFileComment("Auto-Generated at $time. Do not modify!")
             addFunctions(fileSpec.functions)
             addProperties(fileSpec.properties)
         }

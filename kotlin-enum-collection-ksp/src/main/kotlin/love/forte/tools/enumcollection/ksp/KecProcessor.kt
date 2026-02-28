@@ -12,7 +12,7 @@ import love.forte.tools.enumcollection.ksp.configuration.KecConfiguration
 import love.forte.tools.enumcollection.ksp.reserve.EnumCollectionReserve
 import love.forte.tools.enumcollection.ksp.reserve.EnumMapReserve
 import love.forte.tools.enumcollection.ksp.reserve.EnumSetReserve
-import java.util.concurrent.ConcurrentSkipListSet
+import java.util.concurrent.ConcurrentHashMap
 
 private data class ConfigDrivenGenerationTarget(
     val packageName: String,
@@ -32,7 +32,8 @@ internal class KecProcessor(
     private data class ResolvedFromConfigurationIdentity(val name: String, val mode: GenMode)
 
     private val logger = environment.logger
-    private val resolvedFromConfiguration = ConcurrentSkipListSet<ResolvedFromConfigurationIdentity>()
+    private val resolvedFromConfigurationMap = ConcurrentHashMap<ResolvedFromConfigurationIdentity, Unit>()
+    private val resolvedFromConfiguration = resolvedFromConfigurationMap.keySet(Unit)
 
     override fun process(resolver: Resolver): List<KSAnnotated> {
         val reserves = mutableListOf<EnumCollectionReserve>()
@@ -50,7 +51,8 @@ internal class KecProcessor(
 
         // Config-driven enumSets/enumMaps.
         fun addReserveFromConfiguration(externalConfiguration: ExternalEnumConfiguration) {
-            val configIdentity = ResolvedFromConfigurationIdentity(externalConfiguration.enumQualifiedName, externalConfiguration.mode)
+            val configIdentity =
+                ResolvedFromConfigurationIdentity(externalConfiguration.enumQualifiedName, externalConfiguration.mode)
             if (configIdentity in resolvedFromConfiguration) {
                 return
             }
@@ -257,7 +259,7 @@ internal class KecProcessor(
             "PUBLIC",
             "INTERNAL",
             "PRIVATE",
-            -> normalized
+                -> normalized
 
             else -> {
                 logger.warn(

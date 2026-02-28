@@ -26,5 +26,6 @@ include(
     ":examples",
     ":examples:kec-api-example",
     ":examples:kec-ksp-example",
+    ":examples:kec-ksp-noinherit-example",
     ":examples:kec-ksp-external-example",
 )
