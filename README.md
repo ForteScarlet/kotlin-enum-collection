@@ -7,6 +7,28 @@ way.
 - [KSP module](kotlin-enum-collection-ksp): it provides KSP (Kotlin Symbol Processing) integration for generating enum
   collection classes at compile time. Based on [CodeGentle](https://github.com/ForteScarlet/CodeGentle).
 
+## Installation
+
+> The `<VERSION>` should be replaced with the [actual version](http://github.com/ForteScarlet/kotlin-enum-collection/releases).
+> 
+> References: ![](https://img.shields.io/github/v/release/ForteScarlet/kotlin-enum-collection)
+
+**gradle.build.kts**
+
+```Kotlin
+plugins {
+    kotlin("jvm") version "<KOTLIN_VERSION>" // or kotlin("multiplatform")
+    id("com.google.devtools.ksp") version "<KSP_VERSION>" // be careful to match the kotlin version
+}
+
+dependencies {
+    // Optional, if you want to use kec's API, 
+    // or if you want to generate EnumSet/EnumMap that extends' EnumSet<E> '/' EnumMap<E, V> 'from kec's api 
+    implementation("love.forte.tools.enumcollection:kotlin-enum-collection-api:<VERSION>")
+    ksp("love.forte.tools.enumcollection:kotlin-enum-collection-ksp:<VERSION>")
+}
+```
+
 ## Usage
 
 Add `@EnumSet`/`@EnumMap` on your enum class:
@@ -45,6 +67,8 @@ internal fun RoleEnumSet.mutable(): MutableRoleEnumSet
 
 internal fun MutableRoleEnumSet.immutable(): RoleEnumSet
 
+// Top-Level factory functions
+
 internal fun RoleEnumSet(full: Boolean = false): RoleEnumSet
 
 internal fun RoleEnumSet(vararg entries: Role): RoleEnumSet
@@ -70,6 +94,8 @@ internal interface MutableRoleEnumMap<V> : RoleEnumMap<V>, MutableMap<Role, V> /
 internal fun <V> RoleEnumMap<V>.mutable(): MutableRoleEnumMap<V>
 
 internal fun <V> MutableRoleEnumMap<V>.immutable(): RoleEnumMap<V>
+
+// Top-Level factory functions
 
 internal fun <V> RoleEnumMap(): RoleEnumMap<V>
 
